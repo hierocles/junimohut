@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/bodgit/sevenzip"
-	"github.com/nwaples/rardecode"
+	"github.com/nwaples/rardecode/v2"
 )
 
 // Extract unpacks zip, 7z, or rar archives to destDir.
@@ -109,7 +109,7 @@ func extractRar(path, dest string) error {
 		return err
 	}
 	defer f.Close()
-	rr, err := rardecode.NewReader(f, "")
+	rr, err := rardecode.NewReader(f)
 	if err != nil {
 		return err
 	}
