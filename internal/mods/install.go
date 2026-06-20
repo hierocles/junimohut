@@ -51,32 +51,37 @@ func (i *Installer) InstallArchive(archivePath string) ([]InstallResult, error) 
 		return nil, fmt.Errorf("no manifest.json found in archive")
 	}
 
+	units, err := resolveInstallUnits(tmpDir, manifests)
+	if err != nil {
+		return nil, err
+	}
+
 	var results []InstallResult
-	for _, mf := range manifests {
-		manifest, err := ParseManifest(mf)
-		if err != nil {
-			results = append(results, InstallResult{Error: err.Error()})
-			continue
-		}
-		srcDir := filepath.Dir(mf)
-		destName := sanitizeFolderName(manifest.Name)
-		if destName == "" {
-			destName = filepath.Base(srcDir)
-		}
+	for _, unit := range units {
+		destName := unit.destName
 		dest := filepath.Join(i.ModsRoot, destName)
 		if _, err := os.Stat(dest); err == nil {
 			dest = filepath.Join(i.ModsRoot, destName+"_"+time.Now().Format("20060102_150405"))
 		}
-		if err := copyDir(srcDir, dest); err != nil {
-			results = append(results, InstallResult{Name: manifest.Name, Error: err.Error()})
+		if err := copyDir(unit.srcDir, dest); err != nil {
+			results = append(results, InstallResult{Name: destName, Error: err.Error()})
 			continue
 		}
 		rel, _ := filepath.Rel(i.ModsRoot, dest)
-		results = append(results, InstallResult{
-			FolderPath: filepath.ToSlash(rel),
-			ModID:      ModID(filepath.ToSlash(rel), manifest.UniqueID),
-			Name:       manifest.Name,
-		})
+		destRel := filepath.ToSlash(rel)
+		unitResults, err := installResultsForDest(i, destRel)
+		if err != nil {
+			results = append(results, InstallResult{Name: destName, Error: err.Error()})
+			continue
+		}
+		if len(unitResults) == 0 {
+			results = append(results, InstallResult{
+				FolderPath: destRel,
+				Name:       destName,
+			})
+			continue
+		}
+		results = append(results, unitResults...)
 	}
 	return results, nil
 }
@@ -162,11 +167,10 @@ func (i *Installer) UpdateMod(folderPath, archivePath string, deleteOld bool) er
 		return err
 	}
 	manifests = FilterRootManifests(manifests, tmpDir)
-	manifestPath, err := pickUpdateManifest(manifests, dest)
+	srcDir, err := resolveUpdateSourceDir(tmpDir, manifests, dest)
 	if err != nil {
 		return err
 	}
-	srcDir := filepath.Dir(manifestPath)
 	return copyDir(srcDir, dest)
 }
 

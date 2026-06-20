@@ -107,3 +107,77 @@ func TestUpdateModWithoutDeleteOld(t *testing.T) {
 	_, err = os.Stat(filepath.Join(modDir, "new.dll"))
 	must.NoError(err)
 }
+
+func seasonalOpenWindowsManifest(uid string) string {
+	return `{"Name":"[CP] Seasonal Open Windows","Author":"orangeblossom","Version":"1.2.1","UniqueID":"` + uid + `","UpdateKeys":["Nexus:20298"],"ContentPackFor":{"UniqueID":"Pathoschild.ContentPatcher"}}`
+}
+
+func TestInstallArchiveCollidingCPVariantNames(t *testing.T) {
+	must := require.New(t)
+
+	root := t.TempDir()
+	archivePath := filepath.Join(t.TempDir(), "seasonal-open-windows.zip")
+	variants := []struct {
+		folder string
+		uid    string
+	}{
+		{"[CP] Seasonal Open Windows", "OB7.SOWindows"},
+		{"[CP] Seasonal Open Windows - BIRCH", "OB7.SOWindows.birch"},
+		{"[CP] Seasonal Open Windows - BLACK", "OB7.SOWindows.black"},
+		{"[CP] Seasonal Open Windows - BROWN", "OB7.SOWindows.brown"},
+		{"[CP] Seasonal Open Windows - DARK BROWN", "OB7.SOWindows.darkbrown"},
+	}
+	files := map[string]string{}
+	for _, v := range variants {
+		files[v.folder+"/manifest.json"] = seasonalOpenWindowsManifest(v.uid)
+		files[v.folder+"/content.json"] = `{}`
+	}
+	writeTestZip(t, archivePath, files)
+
+	installer := NewInstaller(root)
+	results, err := installer.InstallArchive(archivePath)
+	must.NoError(err)
+	must.Len(results, len(variants))
+
+	seen := map[string]bool{}
+	for _, r := range results {
+		must.Empty(r.Error)
+		seen[r.FolderPath] = true
+		_, err := os.Stat(filepath.Join(root, r.FolderPath, "manifest.json"))
+		must.NoError(err)
+	}
+	for _, v := range variants {
+		must.True(seen[v.folder], "missing install folder %s", v.folder)
+	}
+	_, err = os.Stat(filepath.Join(root, "[CP] Seasonal Open Windows", "[CP] Seasonal Open Windows - BIRCH"))
+	must.True(os.IsNotExist(err))
+}
+
+func TestInstallArchiveCollidingCPVariantNamesWrapped(t *testing.T) {
+	must := require.New(t)
+
+	root := t.TempDir()
+	archivePath := filepath.Join(t.TempDir(), "seasonal-open-windows-wrapped.zip")
+	files := map[string]string{
+		"Seasonal Open Windows All-in-One/[CP] Seasonal Open Windows/manifest.json":             seasonalOpenWindowsManifest("OB7.SOWindows"),
+		"Seasonal Open Windows All-in-One/[CP] Seasonal Open Windows - BIRCH/manifest.json":     seasonalOpenWindowsManifest("OB7.SOWindows.birch"),
+		"Seasonal Open Windows All-in-One/[CP] Seasonal Open Windows - BLACK/manifest.json":     seasonalOpenWindowsManifest("OB7.SOWindows.black"),
+	}
+	writeTestZip(t, archivePath, files)
+
+	installer := NewInstaller(root)
+	results, err := installer.InstallArchive(archivePath)
+	must.NoError(err)
+	must.Len(results, 3)
+
+	names := map[string]bool{}
+	for _, r := range results {
+		must.Empty(r.Error)
+		names[r.FolderPath] = true
+	}
+	must.True(names["[CP] Seasonal Open Windows"])
+	must.True(names["[CP] Seasonal Open Windows - BIRCH"])
+	must.True(names["[CP] Seasonal Open Windows - BLACK"])
+	_, err = os.Stat(filepath.Join(root, "Seasonal Open Windows All-in-One"))
+	must.True(os.IsNotExist(err))
+}

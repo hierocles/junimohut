@@ -1,9 +1,5 @@
 import type { Category } from "../../../bindings/junimohut/internal/categories/models";
 import type { Mod } from "$lib/api/client";
-import {
-  resolveDependencies,
-  countModsWithDependencyIssues,
-} from "$lib/mods/dependencies";
 import type { InstallDependencyPreview } from "$lib/mods/dependencies";
 import { pathBasename } from "$lib/copy";
 import type { Profile } from "../../../bindings/junimohut/internal/profiles/models";
@@ -40,6 +36,7 @@ type ModSeed = {
   }>;
   nexusId?: string;
   savedDownloadPath?: string;
+  customName?: string;
 };
 
 const MOD_SEEDS: ModSeed[] = [
@@ -48,6 +45,7 @@ const MOD_SEEDS: ModSeed[] = [
     folderPath: "LookupAnything",
     uniqueID: "Candidus42.LookupAnything",
     name: "Lookup Anything",
+    customName: "Lookup",
     author: "Candidus42",
     version: "1.47.0",
     description:
@@ -450,7 +448,16 @@ function buildMod(seed: ModSeed, enabledOverrides: Map<string, boolean>): Mod {
     dependencyIssues: [],
     missingDependencyCount: 0,
     savedDownloadPath: seed.savedDownloadPath,
+    customName: resolvedCustomName(id, seed),
   };
+}
+
+function resolvedCustomName(id: string, seed: ModSeed): string | undefined {
+  if (customNameOverrides.has(id)) {
+    const value = customNameOverrides.get(id) ?? "";
+    return value.trim() || undefined;
+  }
+  return seed.customName?.trim() || undefined;
 }
 
 function buildCategories(mods: Mod[]): Category[] {
@@ -468,6 +475,7 @@ function buildCategories(mods: Mod[]): Category[] {
 }
 
 const enabledOverrides = new Map<string, boolean>();
+const customNameOverrides = new Map<string, string>();
 
 function allMods(): Mod[] {
   return resolveDependencies(
@@ -486,7 +494,7 @@ export function filterMods(
     if (hideDisabled === "disabled" && m.enabled) return false;
     if (!q) return true;
     const hay =
-      `${m.manifest?.Name} ${m.manifest?.Author} ${m.manifest?.UniqueID} ${m.folderPath}`.toLowerCase();
+      `${m.manifest?.Name} ${m.customName ?? ""} ${m.manifest?.Author} ${m.manifest?.UniqueID} ${m.folderPath}`.toLowerCase();
     return hay.includes(q);
   });
 }
@@ -579,6 +587,50 @@ export function getMockInstallDependencyPreview(
 
 export function setMockModEnabled(modId: string, enabled: boolean) {
   enabledOverrides.set(modId, enabled);
+}
+
+export function setMockModCustomName(modId: string, name: string) {
+  const trimmed = name.trim();
+  if (trimmed) customNameOverrides.set(modId, trimmed);
+  else customNameOverrides.delete(modId);
+}
+
+export function getMockInstallNamePreview(paths: string[]) {
+  return paths.map((archivePath) => {
+    const base = pathBasename(archivePath).toLowerCase();
+    if (!base.includes("seasonal") && !base.includes("open-windows")) {
+      return {
+        archivePath,
+        needsDisplayNameChoice: false,
+        mods: [
+          {
+            officialName: pathBasename(archivePath).replace(/\.[^.]+$/, ""),
+            folderLabel: pathBasename(archivePath).replace(/\.[^.]+$/, ""),
+            destFolder: pathBasename(archivePath).replace(/\.[^.]+$/, ""),
+            uniqueID: "mock.install",
+          },
+        ],
+      };
+    }
+    return {
+      archivePath,
+      needsDisplayNameChoice: true,
+      mods: [
+        {
+          officialName: "[CP] Seasonal Open Windows",
+          folderLabel: "[CP] Seasonal Open Windows",
+          destFolder: "[CP] Seasonal Open Windows",
+          uniqueID: "OB7.SOWindows",
+        },
+        {
+          officialName: "[CP] Seasonal Open Windows",
+          folderLabel: "[CP] Seasonal Open Windows - BIRCH",
+          destFolder: "[CP] Seasonal Open Windows - BIRCH",
+          uniqueID: "OB7.SOWindows.birch",
+        },
+      ],
+    };
+  });
 }
 
 export function getMockSavedDownloads(): DownloadRecord[] {

@@ -119,6 +119,26 @@ func TestScannerIgnoresHiddenFolders(t *testing.T) {
 	must.Len(mods, 1)
 }
 
+func TestParseManifestTrailingComma(t *testing.T) {
+	must := require.New(t)
+
+	dir := t.TempDir()
+	manifest := `{
+	"Name": "[CP] Shyzie's String Lights",
+	"UniqueID": "Shyzie.StringLights.CP",
+	"UpdateKeys": ["Nexus:20973"],
+	"ContentPackFor": {
+		"UniqueID": "Pathoschild.ContentPatcher",
+	},
+	"Dependencies": [],
+}`
+	must.NoError(os.WriteFile(filepath.Join(dir, "manifest.json"), []byte(manifest), 0o644))
+	m, err := ParseManifest(filepath.Join(dir, "manifest.json"))
+	must.NoError(err)
+	must.Equal("Shyzie.StringLights.CP", m.UniqueID)
+	must.Equal("Pathoschild.ContentPatcher", m.ContentPackFor.UniqueID)
+}
+
 func TestModID(t *testing.T) {
 	must := require.New(t)
 

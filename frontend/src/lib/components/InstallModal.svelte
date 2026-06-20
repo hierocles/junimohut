@@ -10,11 +10,27 @@
     installDependencyWarningBody,
     installAnywayLabel,
     installSuggestedTagsHint,
+    installDisplayNameLegend,
+    installDisplayNameHint,
+    installDisplayNameOfficial,
+    installDisplayNameFolder,
+    installDisplayNamePreviewLabel,
     dependencyNotInstalled,
     dependencyVersionTooLow,
     dependencyDisabled,
   } from '$lib/copy';
   import type { InstallDependencyPreview } from '$lib/mods/dependencies';
+
+  export type InstallNamePreview = {
+    archivePath: string;
+    needsDisplayNameChoice?: boolean;
+    mods: Array<{
+      officialName: string;
+      folderLabel: string;
+      destFolder: string;
+      uniqueID: string;
+    }>;
+  };
 
   interface Props {
     open: boolean;
@@ -56,6 +72,10 @@
   let tagsTouched = $state(false);
   let installMode = $state<'replace' | 'install'>('install');
   let deleteOldFiles = $state(false);
+  let nameDisplayMode = $state<'official' | 'folder'>('official');
+  let namePreviewBusy = $state(false);
+  let namePreviews = $state<InstallNamePreview[]>([]);
+  let installedUseFolderNames = $state(false);
 
   const isUpdateFlow = $derived(updateTarget != null);
   const installActionLabel = $derived(
@@ -85,6 +105,41 @@
       !tagsTouched &&
       appliedSuggestedTagIds.every((id) => selectedTagIds.has(id)),
   );
+
+  const flatNamePreviewMods = $derived(
+    namePreviews.flatMap((preview) =>
+      preview.mods.map((mod) => ({
+        ...mod,
+        archivePath: preview.archivePath,
+      })),
+    ),
+  );
+
+  const hasNameDisplayChoice = $derived(
+    namePreviews.some((preview) => preview.needsDisplayNameChoice),
+  );
+
+  function previewDisplayName(mod: (typeof flatNamePreviewMods)[number]): string {
+    if (hasNameDisplayChoice && nameDisplayMode === 'folder') {
+      return mod.folderLabel;
+    }
+    return mod.officialName;
+  }
+
+  function resultDisplayName(result: InstallResult): string {
+    if (result.name?.trim()) {
+      return result.name;
+    }
+    const preview = flatNamePreviewMods.find(
+      (m) =>
+        result.folderPath === m.destFolder ||
+        (!!result.modId && !!m.uniqueID && result.modId.includes(m.uniqueID)),
+    );
+    if (preview) {
+      return installedUseFolderNames ? preview.folderLabel : preview.officialName;
+    }
+    return pathBasename(result.folderPath) || 'Archive';
+  }
 
   function applySuggestedTags() {
     if (tagsTouched || appliedSuggestedTagIds.length === 0) return;
@@ -175,8 +230,16 @@
     try {
       const batch = [...paths];
       const options: InstallOptions = isUpdateFlow
-        ? { mode: installMode, deleteOld: installMode === 'replace' ? deleteOldFiles : undefined }
-        : { mode: 'install' };
+        ? {
+            mode: installMode,
+            deleteOld: installMode === 'replace' ? deleteOldFiles : undefined,
+            useFolderDisplayNames: hasNameDisplayChoice && nameDisplayMode === 'folder',
+          }
+        : {
+            mode: 'install',
+            useFolderDisplayNames: hasNameDisplayChoice && nameDisplayMode === 'folder',
+          };
+      installedUseFolderNames = options.useFolderDisplayNames ?? false;
       results = await oninstall(batch, [...selectedTagIds], options);
       paths = [];
       dependencyConfirmOpen = false;
@@ -220,6 +283,26 @@
     dependencyPreviews = [];
   }
 
+  async function refreshNamePreview() {
+    if (paths.length === 0 || isUpdateFlow) {
+      namePreviews = [];
+      return;
+    }
+    namePreviewBusy = true;
+    try {
+      if (USE_MOCK_DATA) {
+        const { getMockInstallNamePreview } = await import('$lib/mock/designData');
+        namePreviews = getMockInstallNamePreview([...paths]);
+      } else {
+        namePreviews = (await API.PreviewInstallNames([...paths])) ?? [];
+      }
+    } catch {
+      namePreviews = [];
+    } finally {
+      namePreviewBusy = false;
+    }
+  }
+
   function installMore() {
     results = null;
     queueMicrotask(() => browseBtn?.focus());
@@ -253,6 +336,8 @@
       tagsTouched = false;
       installMode = 'install';
       deleteOldFiles = false;
+      nameDisplayMode = 'official';
+      namePreviews = [];
       dependencyConfirmOpen = false;
       dependencyPreviews = [];
       return;
@@ -262,6 +347,12 @@
       installMode = 'replace';
     }
     applySuggestedTags();
+  });
+
+  $effect(() => {
+    if (!open || isUpdateFlow) return;
+    paths;
+    void refreshNamePreview();
   });
 
   $effect(() => {
@@ -319,8 +410,8 @@
               class:result-row--error={!!result.error}
               style:animation-delay="{Math.min(i, 8) * 40}ms"
             >
-              <span class="result-name type-ui truncate" title={result.name || pathBasename(result.folderPath)}>
-                {result.name || pathBasename(result.folderPath) || 'Archive'}
+              <span class="result-name type-ui truncate" title={resultDisplayName(result)}>
+                {resultDisplayName(result)}
               </span>
               {#if result.error}
                 <span class="state-badge state-badge--error type-caption shrink-0">Failed</span>
@@ -418,6 +509,52 @@
         <p class="type-caption type-meta type-prose queue-empty">
           No files selected yet. Drop archives above or choose files from disk.
         </p>
+      {/if}
+
+      {#if !isUpdateFlow && paths.length > 0 && (namePreviewBusy || hasNameDisplayChoice)}
+        <fieldset class="name-display-mode layout-stack-sm">
+          <legend class="type-label">{installDisplayNameLegend}</legend>
+          <p class="type-caption type-meta type-prose name-display-hint">{installDisplayNameHint}</p>
+          <label class="name-display-option">
+            <input
+              type="radio"
+              bind:group={nameDisplayMode}
+              value="official"
+              disabled={installing || namePreviewBusy}
+            />
+            <span class="type-ui">{installDisplayNameOfficial}</span>
+          </label>
+          <label class="name-display-option">
+            <input
+              type="radio"
+              bind:group={nameDisplayMode}
+              value="folder"
+              disabled={installing || namePreviewBusy}
+            />
+            <span class="type-ui">{installDisplayNameFolder}</span>
+          </label>
+          {#if namePreviewBusy}
+            <p class="type-caption type-meta">Checking mod names…</p>
+          {:else if flatNamePreviewMods.length > 0}
+            <div class="name-preview-list" aria-live="polite">
+              <span class="type-caption type-label">{installDisplayNamePreviewLabel}</span>
+              <ul class="name-preview-items" role="list">
+                {#each flatNamePreviewMods as mod (mod.uniqueID + mod.destFolder + mod.archivePath)}
+                  <li class="name-preview-item">
+                    <span class="type-ui truncate" title={previewDisplayName(mod)}>
+                      {previewDisplayName(mod)}
+                    </span>
+                    {#if mod.officialName !== previewDisplayName(mod)}
+                      <span class="type-caption type-meta truncate" title={mod.officialName}>
+                        manifest: {mod.officialName}
+                      </span>
+                    {/if}
+                  </li>
+                {/each}
+              </ul>
+            </div>
+          {/if}
+        </fieldset>
       {/if}
 
       <div class="tag-section layout-stack-sm">
@@ -879,6 +1016,53 @@
     align-items: center;
     gap: var(--space-2);
     cursor: pointer;
+  }
+
+  .name-display-mode {
+    margin: 0;
+    padding: var(--space-3);
+    border: 1px solid var(--sdvm-border);
+    border-radius: var(--radius-md);
+  }
+
+  .name-display-hint {
+    margin: 0;
+    text-wrap: pretty;
+  }
+
+  .name-display-option {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    cursor: pointer;
+  }
+
+  .name-preview-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin-top: var(--space-1);
+  }
+
+  .name-preview-items {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    max-height: 8rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    overflow-y: auto;
+  }
+
+  .name-preview-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--sdvm-border);
+    border-radius: var(--radius-base, 0.25rem);
+    background-color: color-mix(in oklab, var(--color-surface-900) 30%, var(--sdvm-panel));
   }
 
   @media (prefers-reduced-motion: reduce) {

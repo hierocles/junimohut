@@ -25,6 +25,7 @@
 } from '$lib/copy';
   import emptyStateIllustration from '$lib/assets/brand/empty-state-illustration.svg?raw';
   import { dedupeMods } from '$lib/mods/dedupe';
+  import { displayModName } from '$lib/mods/names';
   import { layoutTagChips } from '$lib/mods/tagChipLayout';
   import { applyModFilters, type GridStatusFilter } from '$lib/mods/filter';
   import {
@@ -217,7 +218,7 @@
   const colVisible = (id: GridColumnId) => isColumnVisible(activeVisibleColumns, id);
 
   function modName(mod: Mod): string {
-    return mod.manifest?.Name ?? mod.folderPath;
+    return displayModName(mod);
   }
 
   function statusSortKey(mod: Mod): number {

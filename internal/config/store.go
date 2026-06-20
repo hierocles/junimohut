@@ -60,6 +60,9 @@ func (s *Store) SelectedModsDir() string {
 func (s *Store) CategoriesPath() string {
 	return filepath.Join(s.dataDir, "categories.json")
 }
+func (s *Store) ModNamesPath() string {
+	return filepath.Join(s.dataDir, "mod-names.json")
+}
 func (s *Store) ConfigPath() string {
 	return filepath.Join(s.dataDir, "config.json")
 }

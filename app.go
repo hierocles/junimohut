@@ -12,6 +12,7 @@ import (
 
 	"junimohut/internal/categories"
 	"junimohut/internal/config"
+	"junimohut/internal/modnames"
 	"junimohut/internal/mods"
 	"junimohut/internal/nexus"
 	"junimohut/internal/platform"
@@ -29,6 +30,7 @@ type App struct {
 	store      *config.Store
 	profiles   *profiles.Service
 	categories *categories.Service
+	modNames   *modnames.Service
 	nexus         *nexus.Client
 	downloads     *nexus.DownloadManager
 	downloadIndex *nexus.DownloadIndex
@@ -113,6 +115,12 @@ func (a *App) startup(ctx context.Context) error {
 	}
 	a.categories = catSvc
 
+	modNamesSvc, err := modnames.NewService(store.ModNamesPath())
+	if err != nil {
+		return err
+	}
+	a.modNames = modNamesSvc
+
 	a.nexus = nexus.NewClient()
 	downloadIndex, err := nexus.NewDownloadIndex(store.DataDir(), store.DownloadsDir())
 	if err != nil {
@@ -182,6 +190,12 @@ func (a *App) refreshMods() error {
 	}
 	for i := range list {
 		list[i].CategoryIDs = a.categories.ModCategoryIDs(list[i].ID)
+		list[i].CustomName = mods.EffectiveCustomName(
+			a.modNames.Get(list[i].ID),
+			list[i].FolderPath,
+			list[i].Manifest.Name,
+			mods.DisplayNameOfficial,
+		)
 	}
 	list = mods.DedupeByUniqueID(mods.DedupeByID(list))
 	list = mods.ResolveDependencies(list)
@@ -269,6 +283,12 @@ func (a *App) ListMods(search, hideDisabled string) []mods.Mod {
 
 	for i := range list {
 		list[i].CategoryIDs = a.categories.ModCategoryIDs(list[i].ID)
+		list[i].CustomName = mods.EffectiveCustomName(
+			a.modNames.Get(list[i].ID),
+			list[i].FolderPath,
+			list[i].Manifest.Name,
+			mods.DisplayNameOfficial,
+		)
 	}
 
 	list = mods.DedupeByUniqueID(mods.DedupeByID(list))
@@ -303,7 +323,55 @@ func (a *App) SetModEnabled(modID string, enabled bool) error {
 	return a.refreshMods()
 }
 
-func (a *App) InstallMods(archivePaths []string) ([]mods.InstallResult, error) {
+func (a *App) SetModCustomName(modID, customName string) error {
+	if err := a.ensureInit(); err != nil {
+		return err
+	}
+	found := false
+	a.mu.RLock()
+	for _, m := range a.modsCache {
+		if m.ID == modID {
+			found = true
+			break
+		}
+	}
+	a.mu.RUnlock()
+	if !found {
+		return fmt.Errorf("mod not found: %s", modID)
+	}
+	if err := a.modNames.Set(modID, customName); err != nil {
+		return err
+	}
+	trimmed := strings.TrimSpace(customName)
+	a.mu.Lock()
+	for i := range a.modsCache {
+		if a.modsCache[i].ID == modID {
+			if trimmed == "" {
+				a.modsCache[i].CustomName = mods.EffectiveCustomName(
+					"",
+					a.modsCache[i].FolderPath,
+					a.modsCache[i].Manifest.Name,
+					mods.DisplayNameOfficial,
+				)
+			} else {
+				a.modsCache[i].CustomName = trimmed
+			}
+			break
+		}
+	}
+	a.mu.Unlock()
+	a.emitModsChanged()
+	return nil
+}
+
+func (a *App) PreviewInstallNames(archivePaths []string) ([]mods.InstallNamePreview, error) {
+	if err := a.ensureInit(); err != nil {
+		return nil, err
+	}
+	return mods.PreviewInstallNames(archivePaths)
+}
+
+func (a *App) InstallMods(archivePaths []string, useFolderDisplayNames bool) ([]mods.InstallResult, error) {
 	if err := a.ensureInit(); err != nil {
 		return nil, err
 	}
@@ -332,6 +400,17 @@ func (a *App) InstallMods(archivePaths []string) ([]mods.InstallResult, error) {
 			}
 		}
 	}
+	for i := range all {
+		if all[i].Error != "" {
+			continue
+		}
+		if useFolderDisplayNames && all[i].ModID != "" {
+			if label := mods.DefaultDisplayName(all[i].FolderPath, all[i].Name); label != "" {
+				_ = a.modNames.Set(all[i].ModID, label)
+			}
+		}
+		all[i].Name = mods.InstallResultDisplayName(all[i].FolderPath, all[i].Name, useFolderDisplayNames)
+	}
 	_ = a.refreshMods()
 	a.emitModsChanged()
 	return all, nil
@@ -340,6 +419,9 @@ func (a *App) InstallMods(archivePaths []string) ([]mods.InstallResult, error) {
 func (a *App) DeleteMod(folderPath string, deleteArchive bool) error {
 	if err := a.ensureInit(); err != nil {
 		return err
+	}
+	if mod, ok := a.modByFolderPath(folderPath); ok {
+		_ = a.modNames.Delete(mod.ID)
 	}
 	settings := a.store.Get()
 	installer := mods.NewInstaller(settings.ModsRoot)
@@ -356,6 +438,11 @@ func (a *App) DeleteMod(folderPath string, deleteArchive bool) error {
 func (a *App) DeleteMods(folderPaths []string, deleteArchives bool) (mods.DeleteModsResult, error) {
 	if err := a.ensureInit(); err != nil {
 		return mods.DeleteModsResult{}, err
+	}
+	for _, folderPath := range folderPaths {
+		if mod, ok := a.modByFolderPath(folderPath); ok {
+			_ = a.modNames.Delete(mod.ID)
+		}
 	}
 	settings := a.store.Get()
 	installer := mods.NewInstaller(settings.ModsRoot)

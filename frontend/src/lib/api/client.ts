@@ -17,6 +17,7 @@ export type InstallResult = NonNullable<
 export type InstallOptions = {
   mode: "install" | "replace";
   deleteOld?: boolean;
+  useFolderDisplayNames?: boolean;
 };
 
 import * as API from "./index";

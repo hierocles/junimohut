@@ -110,6 +110,7 @@ func (s *Scanner) Scan(opts ScanOptions) ([]Mod, error) {
 	if err != nil {
 		return nil, err
 	}
+	mods = CollapseSiblingPacks(mods, opts.ModsRoot, opts.EnabledMods)
 	return mods, nil
 }
 
@@ -185,7 +186,7 @@ func FilterMods(mods []Mod, search, hideDisabled string) []Mod {
 			continue
 		}
 		if search != "" {
-			hay := strings.ToLower(m.Manifest.Name + " " + m.Manifest.Author + " " + m.Manifest.UniqueID + " " + m.FolderPath)
+			hay := strings.ToLower(m.Manifest.Name + " " + m.CustomName + " " + m.Manifest.Author + " " + m.Manifest.UniqueID + " " + m.FolderPath)
 			if !strings.Contains(hay, search) {
 				continue
 			}

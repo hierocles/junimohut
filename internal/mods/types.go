@@ -46,6 +46,21 @@ type InstallDependencyPreview struct {
 	Issues      []DependencyIssue `json:"issues"`
 }
 
+// InstallModNamePreview describes how a mod would be labeled under each naming strategy.
+type InstallModNamePreview struct {
+	OfficialName string `json:"officialName"`
+	FolderLabel  string `json:"folderLabel"`
+	DestFolder   string `json:"destFolder"`
+	UniqueID     string `json:"uniqueID"`
+}
+
+// InstallNamePreview summarizes install naming for one archive.
+type InstallNamePreview struct {
+	ArchivePath            string                  `json:"archivePath"`
+	Mods                   []InstallModNamePreview `json:"mods"`
+	NeedsDisplayNameChoice bool                    `json:"needsDisplayNameChoice"`
+}
+
 // UpdateStatus describes mod update state.
 type UpdateStatus struct {
 	State         string `json:"state"` // current, update_available, incompatible, unofficial
@@ -72,6 +87,7 @@ type Mod struct {
 	DependencyIssues       []DependencyIssue `json:"dependencyIssues"`
 	MissingDependencyCount int               `json:"missingDependencyCount"`
 	SavedDownloadPath      string            `json:"savedDownloadPath,omitempty"`
+	CustomName             string            `json:"customName,omitempty"`
 }
 
 // ModGroup is a collection of mods for UI grouping.

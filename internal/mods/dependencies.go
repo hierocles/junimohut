@@ -6,8 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Masterminds/semver/v3"
 	"junimohut/internal/archive"
+
+	"github.com/Masterminds/semver/v3"
 )
 
 const (
@@ -41,6 +42,31 @@ func ResolveDependencies(mods []Mod) []Mod {
 func ResolveManifestDependencies(manifest Manifest, library []Mod) []DependencyIssue {
 	mod := Mod{Manifest: manifest}
 	return resolveModDependencies(mod, modIndexByUniqueID(library))
+}
+
+// ResolveManifestDependenciesWithPending checks a manifest against the library plus pending install manifests.
+func ResolveManifestDependenciesWithPending(manifest Manifest, library []Mod, pending []Manifest) []DependencyIssue {
+	combined := mergeLibraryWithPendingManifests(library, pending)
+	return ResolveManifestDependencies(manifest, combined)
+}
+
+func mergeLibraryWithPendingManifests(library []Mod, pending []Manifest) []Mod {
+	library = DedupeByUniqueID(DedupeByID(library))
+	byUID := modIndexByUniqueID(library)
+	for _, manifest := range pending {
+		if manifest.UniqueID == "" {
+			continue
+		}
+		if _, ok := byUID[manifest.UniqueID]; ok {
+			continue
+		}
+		library = append(library, Mod{
+			ID:       ModID("pending/"+manifest.UniqueID, manifest.UniqueID),
+			Manifest: manifest,
+			Enabled:  true,
+		})
+	}
+	return library
 }
 
 func modIndexByUniqueID(mods []Mod) map[string]Mod {
@@ -181,19 +207,33 @@ func versionSatisfies(installedVersion, minimumVersion string) bool {
 // PreviewInstallDependencies extracts manifests from archives and checks dependencies.
 func PreviewInstallDependencies(archivePaths []string, library []Mod) ([]InstallDependencyPreview, error) {
 	library = DedupeByUniqueID(DedupeByID(library))
-	var previews []InstallDependencyPreview
+
+	type archiveBatch struct {
+		path       string
+		manifests  []Manifest
+	}
+	var batches []archiveBatch
+	var allPending []Manifest
 	for _, archivePath := range archivePaths {
 		manifests, err := extractManifestsFromArchive(archivePath)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", filepath.Base(archivePath), err)
 		}
-		for _, manifest := range manifests {
-			issues := ResolveManifestDependencies(manifest, library)
+		batches = append(batches, archiveBatch{path: archivePath, manifests: manifests})
+		allPending = append(allPending, manifests...)
+	}
+
+	combinedLibrary := mergeLibraryWithPendingManifests(library, allPending)
+
+	var previews []InstallDependencyPreview
+	for _, batch := range batches {
+		for _, manifest := range batch.manifests {
+			issues := ResolveManifestDependencies(manifest, combinedLibrary)
 			if len(issues) == 0 {
 				continue
 			}
 			previews = append(previews, InstallDependencyPreview{
-				ArchivePath: archivePath,
+				ArchivePath: batch.path,
 				ModName:     manifest.Name,
 				UniqueID:    manifest.UniqueID,
 				Issues:      issues,

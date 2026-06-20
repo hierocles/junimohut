@@ -414,6 +414,24 @@ export function renamedTagMessage(name: string): string {
   return `Renamed tag to "${name}".`;
 }
 
+export function renamedModMessage(name: string): string {
+  return `Display name set to "${name}".`;
+}
+
+export function clearedModDisplayNameMessage(): string {
+  return "Display name cleared.";
+}
+
+export const modOfficialNameLabel = "Official name";
+export const modDisplayNameLabel = "Display name";
+export const modDisplayNamePlaceholder = "Same as official name";
+export const modRenameLabel = "Rename display name…";
+export const modClearDisplayName = "Reset display name";
+export const modDisplayNameAria = "Custom display name for mod list";
+export function modClearDisplayNameAria(name: string): string {
+  return `Clear display name for ${name}`;
+}
+
 export const settingsSectionPaths = "Paths";
 
 export function missingDependencyBadge(
@@ -553,6 +571,12 @@ export function dependenciesMissingSummary(count: number): string {
 }
 export const settingsSectionLibrary = "Library";
 export const settingsSectionAppearance = "Appearance";
+export const installDisplayNameLegend = "Display names in mod list";
+export const installDisplayNameHint =
+  "Some archives include multiple CP/AT variants that share the same manifest name. Choose how they should appear after install.";
+export const installDisplayNameOfficial = "Official manifest names";
+export const installDisplayNameFolder = "Folder names (Junimo Hut split)";
+export const installDisplayNamePreviewLabel = "Will install as";
 export const themeStardewDarkLabel = "Stardew Dark";
 export const themeStardewLightLabel = "Stardew Light";
 export const themeCerberusLabel = "Cerberus";

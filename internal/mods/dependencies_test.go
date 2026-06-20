@@ -1,6 +1,7 @@
 package mods
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -208,4 +209,55 @@ func TestResolveDependenciesDisabledProvider(t *testing.T) {
 	issue := out[1].DependencyIssues[0]
 	must.Equal(DependencyDisabled, issue.State)
 	must.NotEmpty(issue.ProviderModID)
+}
+
+func TestPreviewInstallDependenciesSatisfiesSiblingDeps(t *testing.T) {
+	must := require.New(t)
+
+	archivePath := filepath.Join(t.TempDir(), "sve.zip")
+	writeTestZip(t, archivePath, map[string]string{
+		"Stardew Valley Expanded/Stardew Valley Expanded Code/manifest.json":  sveCodeManifest(),
+		"Stardew Valley Expanded/[CP] Stardew Valley Expanded/manifest.json":  sveCPManifest(),
+		"Stardew Valley Expanded/[FTM] Stardew Valley Expanded/manifest.json": sveFTMManifest(),
+	})
+
+	previews, err := PreviewInstallDependencies([]string{archivePath}, nil)
+	must.NoError(err)
+
+	for _, preview := range previews {
+		for _, issue := range preview.Issues {
+			must.NotEqual("FlashShifter.SVECode", issue.UniqueID, "sibling SVECode should be satisfied by batch")
+			must.NotEqual("FlashShifter.SVE-FTM", issue.UniqueID, "sibling SVE-FTM should be satisfied by batch")
+		}
+	}
+}
+
+func TestPreviewInstallDependenciesStillWarnsExternalDeps(t *testing.T) {
+	must := require.New(t)
+
+	archivePath := filepath.Join(t.TempDir(), "sve.zip")
+	writeTestZip(t, archivePath, map[string]string{
+		"Stardew Valley Expanded/Stardew Valley Expanded Code/manifest.json":  sveCodeManifest(),
+		"Stardew Valley Expanded/[CP] Stardew Valley Expanded/manifest.json":  sveCPManifest(),
+		"Stardew Valley Expanded/[FTM] Stardew Valley Expanded/manifest.json": sveFTMManifest(),
+	})
+
+	previews, err := PreviewInstallDependencies([]string{archivePath}, nil)
+	must.NoError(err)
+	must.NotEmpty(previews)
+
+	foundCPFramework := false
+	foundFTMFramework := false
+	for _, preview := range previews {
+		for _, issue := range preview.Issues {
+			if issue.UniqueID == "Pathoschild.ContentPatcher" {
+				foundCPFramework = true
+			}
+			if issue.UniqueID == "Esca.FarmTypeManager" {
+				foundFTMFramework = true
+			}
+		}
+	}
+	must.True(foundCPFramework, "should warn about missing Content Patcher")
+	must.True(foundFTMFramework, "should warn about missing Farm Type Manager framework")
 }

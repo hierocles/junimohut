@@ -53,6 +53,7 @@ func (b flexBool) MarshalJSON() ([]byte, error) {
 func decodeJSONManifest(data []byte, m *Manifest) error {
 	data = bytes.TrimPrefix(data, utf8BOM)
 	data = stripJSONComments(data)
+	data = stripJSONTrailingCommas(data)
 	return json.Unmarshal(data, m)
 }
 
@@ -97,6 +98,47 @@ func stripJSONComments(data []byte) []byte {
 			}
 			i += 2 // consume */
 			continue
+		}
+		out = append(out, data[i])
+		i++
+	}
+	return out
+}
+
+// stripJSONTrailingCommas removes trailing commas before } or ] (SMAPI-tolerant JSON).
+func stripJSONTrailingCommas(data []byte) []byte {
+	var out []byte
+	i := 0
+	inString := false
+	for i < len(data) {
+		if inString {
+			if data[i] == '\\' && i+1 < len(data) {
+				out = append(out, data[i], data[i+1])
+				i += 2
+				continue
+			}
+			if data[i] == '"' {
+				inString = false
+			}
+			out = append(out, data[i])
+			i++
+			continue
+		}
+		if data[i] == '"' {
+			inString = true
+			out = append(out, data[i])
+			i++
+			continue
+		}
+		if data[i] == ',' {
+			j := i + 1
+			for j < len(data) && (data[j] == ' ' || data[j] == '\t' || data[j] == '\r' || data[j] == '\n') {
+				j++
+			}
+			if j < len(data) && (data[j] == '}' || data[j] == ']') {
+				i++
+				continue
+			}
 		}
 		out = append(out, data[i])
 		i++

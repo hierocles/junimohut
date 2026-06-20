@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Mod } from '$lib/api/client';
-  import { contextMenuReinstallSavedLabel } from '$lib/copy';
+  import { contextMenuReinstallSavedLabel, modRenameLabel } from '$lib/copy';
 
   interface Props {
     mod: Mod | null;
@@ -26,6 +26,7 @@
     [
       { action: 'openFolder', label: 'Open mod folder' },
       { action: 'openManifest', label: 'Open manifest.json' },
+      { action: 'rename', label: modRenameLabel },
       ...(hasSavedDownload
         ? [{ action: 'reinstallSaved', label: contextMenuReinstallSavedLabel }]
         : []),

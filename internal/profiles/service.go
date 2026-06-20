@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"sync"
 
+	"junimohut/internal/mods"
+
 	"github.com/google/uuid"
 )
 
@@ -166,7 +168,11 @@ func (s *Service) SetModEnabled(modID string, enabled bool) error {
 			if p.EnabledMods == nil {
 				p.EnabledMods = map[string]bool{}
 			}
-			p.EnabledMods[modID] = enabled
+			if mods.IsPackModID(modID) {
+				mods.MigratePackEnableState(p.EnabledMods, modID, enabled)
+			} else {
+				p.EnabledMods[modID] = enabled
+			}
 			s.profiles[i] = p
 			return s.saveProfile(p)
 		}

@@ -1,7 +1,6 @@
 package platform
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -22,19 +21,6 @@ func LinkDir(link, target string) error {
 		return junction(link, absTarget)
 	}
 	return os.Symlink(absTarget, link)
-}
-
-func junction(link, target string) error {
-	// Directory junction (no admin required)
-	cmd := exec.Command("cmd", "/c", "mklink", "/J", link, target)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		// fallback to symlink
-		if symErr := os.Symlink(target, link); symErr != nil {
-			return fmt.Errorf("mklink: %s: %w", string(out), err)
-		}
-	}
-	return nil
 }
 
 // ClearDir removes all entries in a directory.
