@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Icon concept sheet  not for production use -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 120" fill="none">
+  <text x="8" y="14" fill="#888" font-family="system-ui,sans-serif" font-size="10" font-weight="600">ICON CONCEPTS (B selected)</text>
+
+  <!-- A: Hut only -->
+  <g transform="translate(20,28)">
+    <text x="0" y="-8" fill="#666" font-family="system-ui,sans-serif" font-size="9">A  Hut only</text>
+    <path d="M32 8 8 28v32h48V28L32 8Z" stroke="#8b5e3c" stroke-width="2" fill="#8b5e3c" fill-opacity="0.25" stroke-linejoin="round"/>
+    <path d="M20 60V36c0-4 3-7 7-7h10c4 0 7 3 7 7v24" stroke="#8b5e3c" stroke-width="2"/>
+  </g>
+
+  <!-- B: Hut + Junimo (selected) -->
+  <g transform="translate(140,28)">
+    <text x="0" y="-8" fill="#c9a227" font-family="system-ui,sans-serif" font-size="9" font-weight="600">B  Hut + Junimo </text>
+    <rect x="-4" y="-12" width="72" height="76" rx="4" stroke="#c9a227" stroke-width="1" stroke-dasharray="3 2" opacity="0.5"/>
+    <path d="M32 8 8 28v32h48V28L32 8Z" stroke="#8b5e3c" stroke-width="2" fill="#8b5e3c" fill-opacity="0.25" stroke-linejoin="round"/>
+    <path d="M20 60V36c0-4 3-7 7-7h10c4 0 7 3 7 7v24" stroke="#8b5e3c" stroke-width="2"/>
+    <circle cx="32" cy="42" r="8" fill="#7bc67e" stroke="#4a8f4e" stroke-width="1.5"/>
+    <path d="M36 34c4-2 8-1 10 3" fill="#5cb85c"/>
+  </g>
+
+  <!-- C: Junimo doorway -->
+  <g transform="translate(260,28)">
+    <text x="0" y="-8" fill="#666" font-family="system-ui,sans-serif" font-size="9">C  Junimo doorway</text>
+    <path d="M8 20h48" stroke="#8b5e3c" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="32" cy="40" r="18" fill="#7bc67e" stroke="#4a8f4e" stroke-width="2"/>
+    <path d="M38 26c6-3 14-2 16 6" fill="#5cb85c"/>
+  </g>
+</svg>

@@ -1,0 +1,11 @@
+{
+  "overrides": [
+    {
+      "files": "**/*.json",
+      "excludeFiles": ["**/tsconfig.json", "**/tsconfig.*.json"],
+      "options": {
+        "parser": "json"
+      }
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+repos:
+  - repo: https://github.com/siderolabs/conform
+    rev: main
+    hooks:
+      - id: conform
+        stages:
+          - commit-msg
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: main
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-merge-conflict

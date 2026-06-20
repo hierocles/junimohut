@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+  <!-- Junimo Hut header mark  simplified hut + junimo silhouette; uses currentColor for theme tint -->
+  <path
+    d="M12 3.5 4.5 9.25V20h15V9.25L12 3.5Z"
+    fill="currentColor"
+    fill-opacity="0.22"
+    stroke="currentColor"
+    stroke-width="1.5"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M8.25 20V12.5c0-1.1.9-2 2-2h3.5c1.1 0 2 .9 2 2V20"
+    stroke="currentColor"
+    stroke-width="1.5"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <circle cx="12" cy="14.25" r="2.15" fill="currentColor" />
+  <path
+    d="M11.15 12.35c.35-.55.95-.85 1.55-.75.75.12 1.25.75 1.25 1.45"
+    stroke="currentColor"
+    stroke-width="0.9"
+    stroke-linecap="round"
+    opacity="0.85"
+  />
+  <path
+    d="M12.35 11.1c.15-.75.75-1.2 1.45-1.05.55.12.95.62 1 1.2"
+    fill="currentColor"
+    opacity="0.9"
+  />
+</svg>

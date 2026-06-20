@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 160" fill="none" aria-hidden="true">
+  <!-- Setup wizard hero  welcoming hut scene, flat vector -->
+  <rect width="320" height="160" rx="12" fill="color-mix(in oklab, var(--color-secondary-500, #486b48) 8%, var(--color-surface-900, #243d2c))" />
+  <ellipse cx="160" cy="138" rx="110" ry="10" fill="currentColor" opacity="0.08" />
+
+  <path
+    d="M160 36 88 78v62h144V78L160 36Z"
+    fill="color-mix(in oklab, var(--color-tertiary-500, #8b5e3c) 55%, transparent)"
+    stroke="currentColor"
+    stroke-width="2"
+    stroke-linejoin="round"
+    opacity="0.85"
+  />
+  <path
+    d="M112 140V92c0-6.6 5.4-12 12-12h72c6.6 0 12 5.4 12 12v48"
+    fill="color-mix(in oklab, var(--color-tertiary-400, #a67c52) 40%, transparent)"
+    stroke="currentColor"
+    stroke-width="2"
+    stroke-linejoin="round"
+    opacity="0.7"
+  />
+  <path
+    d="M136 140V98c0-4.4 3.6-8 8-8h32c4.4 0 8 3.6 8 8v42"
+    fill="color-mix(in oklab, var(--color-surface-950, #1a2e22) 70%, transparent)"
+    stroke="currentColor"
+    stroke-width="1.5"
+    stroke-linejoin="round"
+    opacity="0.55"
+  />
+
+  <circle cx="160" cy="104" r="16" fill="#7bc67e" stroke="#4a8f4e" stroke-width="2" opacity="0.95" />
+  <ellipse cx="160" cy="96" rx="6" ry="4" fill="#fff" opacity="0.9" />
+  <circle cx="152" cy="102" r="2.5" fill="#2d4a30" />
+  <circle cx="168" cy="102" r="2.5" fill="#2d4a30" />
+  <path d="M152 110c8 6 16 6 24 0" stroke="#2d4a30" stroke-width="2" stroke-linecap="round" />
+  <path
+    d="M172 86c8-4 16-2 20 6-8 2-14 0-20-6Z"
+    fill="#5cb85c"
+    stroke="#3d7a40"
+    stroke-width="1.5"
+    stroke-linejoin="round"
+  />
+
+  <!-- Small crop/tool hints  mods as tended items -->
+  <rect x="228" y="108" width="14" height="18" rx="2" stroke="currentColor" stroke-width="1.5" opacity="0.35" />
+  <path d="M235 114v6M232 117h6" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" opacity="0.35" />
+  <circle cx="78" cy="112" r="6" stroke="currentColor" stroke-width="1.5" opacity="0.3" />
+  <path d="M78 109v6M75 112h6" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" opacity="0.3" />
+</svg>

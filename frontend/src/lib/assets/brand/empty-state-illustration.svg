@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" fill="none" aria-hidden="true">
+  <!-- Empty library illustration  hut at rest, junimo sleeping / waiting -->
+  <path
+    d="M40 12 16 30v34h48V30L40 12Z"
+    fill="color-mix(in oklab, var(--color-primary-500, #c9a227) 12%, var(--color-surface-900, #243d2c))"
+    stroke="currentColor"
+    stroke-width="1.75"
+    stroke-linejoin="round"
+    opacity="0.9"
+  />
+  <path
+    d="M26 64V38c0-2.2 1.8-4 4-4h20c2.2 0 4 1.8 4 4v26"
+    stroke="currentColor"
+    stroke-width="1.75"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    opacity="0.75"
+  />
+  <circle cx="40" cy="44" r="7" fill="currentColor" opacity="0.55" />
+  <path
+    d="M36.5 42.5c.8-1.2 2.4-1.6 3.6-.9 1 .6 1.4 1.8 1.1 2.8"
+    stroke="currentColor"
+    stroke-width="1.1"
+    stroke-linecap="round"
+    opacity="0.65"
+  />
+  <path
+    d="M41.5 39.5c.3-1.4 1.4-2.2 2.7-1.9 1 .2 1.7 1 1.8 2"
+    fill="currentColor"
+    opacity="0.6"
+  />
+  <!-- Zzz hint  subtle, not silly -->
+  <path
+    d="M54 28h5l-4 5h4"
+    stroke="currentColor"
+    stroke-width="1.25"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    opacity="0.35"
+  />
+  <path
+    d="M58 22h4l-3 4h3"
+    stroke="currentColor"
+    stroke-width="1"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    opacity="0.25"
+  />
+</svg>

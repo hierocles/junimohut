@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none" aria-hidden="true">
+  <!-- Junimo Hut app icon  flat vector, readable at 32px taskbar -->
+  <defs>
+    <linearGradient id="bg" x1="128" y1="96" x2="896" y2="928" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1a2e22" />
+      <stop offset="1" stop-color="#243d2c" />
+    </linearGradient>
+    <linearGradient id="roof" x1="512" y1="220" x2="512" y2="500" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6b4a32" />
+      <stop offset="1" stop-color="#4a3224" />
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="224" fill="url(#bg)" />
+  <rect x="96" y="96" width="832" height="832" rx="192" fill="#1f3628" opacity="0.35" />
+
+  <!-- Hut body -->
+  <path
+    d="M512 248 248 448v352h528V448L512 248Z"
+    fill="url(#roof)"
+    stroke="#3d281c"
+    stroke-width="12"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M336 800V520c0-44 36-80 80-80h192c44 0 80 36 80 80v280"
+    fill="#8b5e3c"
+    stroke="#5c3f28"
+    stroke-width="12"
+    stroke-linejoin="round"
+  />
+
+  <!-- Doorway -->
+  <path
+    d="M432 800V552c0-33 27-60 60-60h40c33 0 60 27 60 60v248"
+    fill="#2a241c"
+    stroke="#1a1612"
+    stroke-width="8"
+    stroke-linejoin="round"
+  />
+
+  <!-- Junimo -->
+  <circle cx="512" cy="588" r="88" fill="#7bc67e" stroke="#4a8f4e" stroke-width="10" />
+  <ellipse cx="512" cy="548" rx="34" ry="22" fill="#ffffff" opacity="0.92" />
+  <circle cx="488" cy="572" r="14" fill="#2d4a30" />
+  <circle cx="536" cy="572" r="14" fill="#2d4a30" />
+  <path
+    d="M488 616c24 28 56 28 80 0"
+    stroke="#2d4a30"
+    stroke-width="10"
+    stroke-linecap="round"
+  />
+  <!-- Leaf -->
+  <path
+    d="M548 498c36-18 72-8 88 22-34 8-62 2-88-22Z"
+    fill="#5cb85c"
+    stroke="#3d7a40"
+    stroke-width="8"
+    stroke-linejoin="round"
+  />
+  <path d="M548 498c18 28 8 56-18 72" stroke="#3d7a40" stroke-width="8" stroke-linecap="round" />
+
+  <!-- Ground hint -->
+  <ellipse cx="512" cy="832" rx="280" ry="28" fill="#2d4a36" opacity="0.55" />
+</svg>
