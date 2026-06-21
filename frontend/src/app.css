@@ -130,6 +130,20 @@
     var(--color-secondary-500) 8%,
     var(--sdvm-panel)
   );
+
+  /* Config editor — CodeMirror JSON / JSONC syntax (theme-aware) */
+  --sdvm-editor-key: var(--color-primary-200);
+  --sdvm-editor-string: var(--sdvm-success-fg);
+  --sdvm-editor-number: var(--color-warning-300);
+  --sdvm-editor-bool: color-mix(
+    in oklab,
+    var(--color-secondary-300) 88%,
+    var(--color-surface-50)
+  );
+  --sdvm-editor-null: var(--color-surface-400);
+  --sdvm-editor-punct: var(--color-surface-500);
+  --sdvm-editor-bracket: var(--color-surface-400);
+  --sdvm-editor-comment: var(--color-surface-500);
 }
 
 html,
