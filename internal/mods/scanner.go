@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 )
 
 // ScanOptions configures mod discovery.
@@ -13,6 +12,7 @@ type ScanOptions struct {
 	IgnoreHiddenFolders bool
 	EnabledMods         map[string]bool
 	Grouping            string
+	SkipPackCollapse    bool
 }
 
 // Scanner discovers mods in the mods root folder.
@@ -32,7 +32,9 @@ func (s *Scanner) Scan(opts ScanOptions) ([]Mod, error) {
 	var mods []Mod
 	seen := map[string]bool{}
 	s.scanDir(opts, opts.ModsRoot, &mods, seen)
-	mods = CollapseSiblingPacks(mods, opts.ModsRoot, opts.EnabledMods)
+	if !opts.SkipPackCollapse {
+		mods = CollapseSiblingPacks(mods, opts.ModsRoot, opts.EnabledMods)
+	}
 	return mods, nil
 }
 
@@ -100,12 +102,6 @@ func modFromManifest(opts ScanOptions, manifestPath string, seen map[string]bool
 		enabled = true
 	}
 
-	info, _ := os.Stat(manifestPath)
-	var modTime int64
-	if info != nil {
-		modTime = info.ModTime().Unix()
-	}
-
 	configPath := filepath.Join(modDir, "config.json")
 	_, hasConfig := os.Stat(configPath)
 	jsonFileCount := CountJsonFiles(modDir)
@@ -124,8 +120,6 @@ func modFromManifest(opts ScanOptions, manifestPath string, seen map[string]bool
 		HasJsonFiles: jsonFileCount > 0,
 		JsonFileCount: jsonFileCount,
 		IsCoreMod:    CoreModIDs[manifest.UniqueID],
-		InstallTime:  modTime,
-		LastUpdated:  modTime,
 	}, true
 }
 
@@ -251,9 +245,4 @@ func FilterByCategories(mods []Mod, categories []CategoryVisibility) []Mod {
 		}
 	}
 	return out
-}
-
-// TouchMod updates last-updated timestamp metadata (placeholder for install tracking).
-func TouchMod(m *Mod) {
-	m.LastUpdated = time.Now().Unix()
 }

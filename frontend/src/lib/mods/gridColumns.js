@@ -5,6 +5,7 @@ export const GRID_COLUMNS = [
     { id: 'author', label: 'Author' },
     { id: 'version', label: 'Version' },
     { id: 'folder', label: 'Folder' },
+    { id: 'installed', label: 'Installed' },
     { id: 'status', label: 'Status' },
 ];
 export const DEFAULT_VISIBLE_COLUMNS = GRID_COLUMNS.map((c) => c.id);

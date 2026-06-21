@@ -16,6 +16,7 @@ import (
 	"junimohut/internal/modnames"
 	"junimohut/internal/modoverwrites"
 	"junimohut/internal/mods"
+	"junimohut/internal/modtimes"
 	"junimohut/internal/nexus"
 	"junimohut/internal/platform"
 	"junimohut/internal/profiles"
@@ -33,6 +34,7 @@ type App struct {
 	profiles   *profiles.Service
 	categories *categories.Service
 	modNames        *modnames.Service
+	modTimes        *modtimes.Service
 	overwriteMerges *modoverwrites.Service
 	nexus           *nexus.Client
 	downloads     *nexus.DownloadManager
@@ -134,6 +136,12 @@ func (a *App) startup(ctx context.Context) error {
 	}
 	a.modNames = modNamesSvc
 
+	modTimesSvc, err := modtimes.NewService(store.ModTimesPath())
+	if err != nil {
+		return err
+	}
+	a.modTimes = modTimesSvc
+
 	overwriteSvc, err := modoverwrites.NewService(store.OverwriteMergesPath())
 	if err != nil {
 		return err
@@ -207,6 +215,7 @@ func (a *App) refreshMods() error {
 		IgnoreHiddenFolders: settings.IgnoreHiddenFolders,
 		EnabledMods:         enabled,
 		Grouping:            settings.ModGrouping,
+		SkipPackCollapse:    true,
 	})
 	if err != nil {
 		return err
@@ -221,6 +230,8 @@ func (a *App) refreshMods() error {
 		)
 		list[i].ContainsOverwrites = a.overwriteMerges.ContainsOverwrites(list[i].ID)
 	}
+	a.enrichModTimes(list)
+	list = mods.CollapseSiblingPacks(list, settings.ModsRoot, enabled)
 	list = mods.DedupeByUniqueID(mods.DedupeByID(list))
 	list = mods.ResolveDependencies(list)
 	a.mu.Lock()
@@ -229,6 +240,24 @@ func (a *App) refreshMods() error {
 
 	go a.finishModRefresh(list, enabled, settings)
 	return nil
+}
+
+func (a *App) enrichModTimes(list []mods.Mod) {
+	seeds := map[string]int64{}
+	for i := range list {
+		if rec, ok := a.modTimes.Get(list[i].ID); ok {
+			list[i].InstallTime = rec.InstallTime
+			list[i].LastUpdated = rec.LastUpdated
+			continue
+		}
+		t := mods.ManifestModTime(list[i].AbsolutePath)
+		if t > 0 {
+			seeds[list[i].ID] = t
+			list[i].InstallTime = t
+			list[i].LastUpdated = t
+		}
+	}
+	_ = a.modTimes.SeedBatch(seeds)
 }
 
 func (a *App) finishModRefresh(list []mods.Mod, enabled map[string]bool, settings config.Settings) {
@@ -426,6 +455,8 @@ func (a *App) InstallMods(archivePaths []string, useFolderDisplayNames bool, ove
 			all = append(all, result)
 			if result.ModID != "" {
 				_ = a.overwriteMerges.RecordMerge(result.ModID)
+				fallback := mods.ManifestModTime(filepath.Join(settings.ModsRoot, filepath.FromSlash(result.FolderPath)))
+				_ = a.modTimes.RecordUpdate(result.ModID, fallback)
 				a.downloadIndex.RecordInstall(p, a.modUniqueIDFor(result.ModID), 0)
 			}
 			if settings.AutoEnableOnInstall && result.ModID != "" {
@@ -444,6 +475,7 @@ func (a *App) InstallMods(archivePaths []string, useFolderDisplayNames bool, ove
 			if r.Error != "" || r.ModID == "" {
 				continue
 			}
+			_ = a.modTimes.RecordInstall(r.ModID)
 			uniqueID := a.modUniqueIDFor(r.ModID)
 			a.downloadIndex.RecordInstall(p, uniqueID, 0)
 		}
@@ -477,6 +509,7 @@ func (a *App) DeleteMod(folderPath string, deleteArchive bool) error {
 	}
 	if mod, ok := a.modByFolderPath(folderPath); ok {
 		_ = a.modNames.Delete(mod.ID)
+		_ = a.modTimes.Delete(mod.ID)
 		_ = a.overwriteMerges.Delete(mod.ID)
 	}
 	settings := a.store.Get()
@@ -498,6 +531,7 @@ func (a *App) DeleteMods(folderPaths []string, deleteArchives bool) (mods.Delete
 	for _, folderPath := range folderPaths {
 		if mod, ok := a.modByFolderPath(folderPath); ok {
 			_ = a.modNames.Delete(mod.ID)
+			_ = a.modTimes.Delete(mod.ID)
 			_ = a.overwriteMerges.Delete(mod.ID)
 		}
 	}
@@ -528,6 +562,8 @@ func (a *App) UpdateMod(folderPath, archivePath string, deleteOld bool) error {
 		return err
 	}
 	if mod, ok := a.modByFolderPath(folderPath); ok {
+		fallback := mods.ManifestModTime(mod.AbsolutePath)
+		_ = a.modTimes.RecordUpdate(mod.ID, fallback)
 		a.downloadIndex.RecordInstall(archivePath, mod.Manifest.UniqueID, nexus.ModIDFromUpdateKeys(mod.Manifest.UpdateKeys))
 	}
 	_ = a.refreshMods()

@@ -533,6 +533,7 @@ export const MOCK_SETTINGS: Settings = {
     "author",
     "version",
     "folder",
+    "installed",
     "status",
   ],
   windowWidth: 1430,

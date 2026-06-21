@@ -34,7 +34,7 @@ func DefaultSettings() Settings {
 		AutoSaveProfileChanges: true,
 		ModGrouping:            "folder",
 		HideDisabledFilter:     "none",
-		VisibleColumns:         []string{"enabled", "name", "tags", "author", "version", "folder", "status"},
+		VisibleColumns:         []string{"enabled", "name", "tags", "author", "version", "folder", "installed", "status"},
 		WindowWidth:            1430,
 		WindowHeight:           900,
 	}

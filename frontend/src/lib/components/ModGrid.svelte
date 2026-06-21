@@ -110,8 +110,15 @@
     | "author"
     | "version"
     | "folder"
+    | "installed"
     | "status";
-  type SortColumn = "name" | "author" | "version" | "folder" | "status";
+  type SortColumn =
+    | "name"
+    | "author"
+    | "version"
+    | "folder"
+    | "installed"
+    | "status";
   type SortDirection = "asc" | "desc";
 
   const SORT_COLUMNS: SortColumn[] = [
@@ -119,6 +126,7 @@
     "author",
     "version",
     "folder",
+    "installed",
     "status",
   ];
   const SORT_COLUMN_LABELS: Record<SortColumn, string> = {
@@ -126,6 +134,7 @@
     author: "Author",
     version: "Version",
     folder: "Folder",
+    installed: "Installed",
     status: "Status",
   };
 
@@ -135,6 +144,7 @@
     author: 80,
     version: 72,
     folder: 80,
+    installed: 96,
     status: 168,
   };
 
@@ -144,6 +154,7 @@
     author: 128,
     version: 112,
     folder: 160,
+    installed: 120,
     status: 200,
   };
 
@@ -272,6 +283,19 @@
     return displayModName(mod);
   }
 
+  function formatInstallDate(ts: number): { label: string; title: string } {
+    if (!ts) return { label: "—", title: "" };
+    const date = new Date(ts * 1000);
+    return {
+      label: date.toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      }),
+      title: date.toLocaleString(),
+    };
+  }
+
   function statusSortKey(mod: Mod): number {
     return modStatusSortKey(mod);
   }
@@ -313,6 +337,15 @@
           sensitivity: "base",
         });
         break;
+      case "installed": {
+        const aT = a.installTime;
+        const bT = b.installTime;
+        if (!aT && !bT) cmp = 0;
+        else if (!aT) return 1;
+        else if (!bT) return -1;
+        else cmp = aT - bT;
+        break;
+      }
       case "status": {
         cmp = statusSortKey(a) - statusSortKey(b);
         if (cmp === 0)
@@ -989,6 +1022,9 @@
         {#if colVisible("folder")}
           <col style="width: {columnWidths.folder}px" />
         {/if}
+        {#if colVisible("installed")}
+          <col style="width: {columnWidths.installed}px" />
+        {/if}
         {#if colVisible("status")}
           <col style="width: {columnWidths.status}px" />
         {/if}
@@ -1155,6 +1191,42 @@
               ></button>
             </th>
           {/if}
+          {#if colVisible("installed")}
+            <th
+              scope="col"
+              class="th-resizable th-sortable"
+              aria-sort={ariaSortValue("installed")}
+            >
+              <button
+                type="button"
+                class="th-sort-btn"
+                onclick={() => toggleSort("installed")}
+              >
+                <span class="type-label th-label">Installed</span>
+                {#if sortColumn === "installed" && sortDirection === "asc"}
+                  <ChevronUp
+                    size={12}
+                    strokeWidth={2.5}
+                    aria-hidden="true"
+                    class="th-sort-icon"
+                  />
+                {:else if sortColumn === "installed" && sortDirection === "desc"}
+                  <ChevronDown
+                    size={12}
+                    strokeWidth={2.5}
+                    aria-hidden="true"
+                    class="th-sort-icon"
+                  />
+                {/if}
+              </button>
+              <button
+                type="button"
+                class="resize-handle"
+                aria-label="Resize Installed column"
+                onmousedown={(e) => startColumnResize("installed", e)}
+              ></button>
+            </th>
+          {/if}
           {#if colVisible("status")}
             <th
               scope="col"
@@ -1234,6 +1306,7 @@
 {#snippet modRow(mod: Mod)}
   {@const status = statusInfo(mod)}
   {@const version = versionDisplay(mod)}
+  {@const installedDate = formatInstallDate(mod.installTime)}
   {@const modCategories = categoriesForMod(mod)}
   {@const tagLayout = layoutTagChips(modCategories, columnWidths.tags)}
   {@const isDownloading = downloadingIds.has(mod.id)}
@@ -1339,6 +1412,15 @@
     {#if colVisible("folder")}
       <td class="cell-truncate type-meta" role="gridcell">
         {mod.folderPath}
+      </td>
+    {/if}
+    {#if colVisible("installed")}
+      <td
+        class="cell-truncate type-meta"
+        role="gridcell"
+        title={installedDate.title || undefined}
+      >
+        {installedDate.label}
       </td>
     {/if}
     {#if colVisible("status")}
