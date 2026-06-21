@@ -15,5 +15,6 @@ func DefaultCategories() []Category {
 		{ID: "tag-audio", Name: "Audio", Color: "#06b6d4", Visible: true, SortOrder: 9, ModIDs: []string{}},
 		{ID: "tag-framework", Name: "Framework & Libraries", Color: "#4f46e5", Visible: true, SortOrder: 10, ModIDs: []string{}},
 		{ID: "tag-cheats", Name: "Cheats & Unbalanced", Color: "#f97316", Visible: true, SortOrder: 11, ModIDs: []string{}},
+		{ID: "tag-fashion-sense", Name: "Fashion Sense", Color: "#ec4899", Visible: true, SortOrder: 12, ModIDs: []string{}},
 	}
 }

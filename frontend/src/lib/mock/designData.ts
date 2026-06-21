@@ -560,6 +560,7 @@ export function getMockRefreshData(search: string, hideDisabled: string) {
     smapiVersion: "4.0.0",
     readyCount,
     dependencyIssueCount,
+    unmanagedMods: [],
   };
 }
 

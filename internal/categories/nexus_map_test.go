@@ -27,3 +27,10 @@ func TestTagIDForNexusCategory(t *testing.T) {
 		})
 	}
 }
+
+func TestNexusCategoryDefersUntilManifest(t *testing.T) {
+	must := require.New(t)
+	must.True(NexusCategoryDefersUntilManifest("Clothing"))
+	must.False(NexusCategoryDefersUntilManifest("Items"))
+	must.False(NexusCategoryDefersUntilManifest("User Interface"))
+}

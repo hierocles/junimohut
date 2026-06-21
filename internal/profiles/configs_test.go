@@ -114,3 +114,33 @@ func TestConfigManagerUsesLibraryNotSymlinkPath(t *testing.T) {
 	must.NoError(err)
 	must.Equal(config, string(saved))
 }
+
+func TestConfigManagerSaveAndRestoreNestedJSON(t *testing.T) {
+	t.Parallel()
+	must := require.New(t)
+
+	root := t.TempDir()
+	profilesDir := filepath.Join(root, "profiles")
+	svc, err := NewService(profilesDir)
+	must.NoError(err)
+	p, err := svc.Create("Default")
+	must.NoError(err)
+	must.NoError(svc.SetActive(p.ID))
+
+	modsRoot := filepath.Join(root, "library")
+	modDir := filepath.Join(modsRoot, "SampleMod")
+	must.NoError(os.MkdirAll(filepath.Join(modDir, "i18n"), 0o755))
+	must.NoError(os.WriteFile(filepath.Join(modDir, "config.json"), []byte(`{"a":1}`), 0o644))
+	must.NoError(os.WriteFile(filepath.Join(modDir, "i18n", "default.json"), []byte(`{"b":2}`), 0o644))
+
+	modID := "SampleMod::Author.Sample"
+	mgr := NewConfigManager(profilesDir, svc)
+	must.NoError(mgr.SaveModConfig(modsRoot, modID, "Author.Sample"))
+
+	must.NoError(os.WriteFile(filepath.Join(modDir, "i18n", "default.json"), []byte(`{"b":9}`), 0o644))
+	must.NoError(mgr.RestoreModConfig(modsRoot, modID, "Author.Sample"))
+
+	got, err := os.ReadFile(filepath.Join(modDir, "i18n", "default.json"))
+	must.NoError(err)
+	must.Equal(`{"b":2}`, string(got))
+}

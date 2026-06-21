@@ -18,6 +18,7 @@ type DownloadRecord struct {
 	ArchivePath  string `json:"archivePath"`
 	NexusModID   int    `json:"nexusModId,omitempty"`
 	UniqueID     string `json:"uniqueId,omitempty"`
+	ModName      string `json:"modName,omitempty"`
 	FileName     string `json:"fileName,omitempty"`
 	DownloadedAt int64  `json:"downloadedAt"`
 }
@@ -44,8 +45,17 @@ func NewDownloadIndex(dataDir, downloadsDir string) (*DownloadIndex, error) {
 	if err := idx.load(); err != nil {
 		return nil, err
 	}
-	idx.reconcile()
 	return idx, nil
+}
+
+// ReconcileAsync indexes new archives and enriches metadata without blocking startup.
+func (idx *DownloadIndex) ReconcileAsync() {
+	go idx.reconcile()
+}
+
+// Reconcile synchronously indexes archives on disk (can be slow with many downloads).
+func (idx *DownloadIndex) Reconcile() {
+	idx.reconcile()
 }
 
 func (idx *DownloadIndex) load() error {
@@ -109,6 +119,9 @@ func (idx *DownloadIndex) Record(rec DownloadRecord) error {
 			if rec.UniqueID == "" {
 				rec.UniqueID = existing.UniqueID
 			}
+			if rec.ModName == "" {
+				rec.ModName = existing.ModName
+			}
 			if rec.FileName == "" {
 				rec.FileName = existing.FileName
 			}
@@ -122,7 +135,6 @@ func (idx *DownloadIndex) Record(rec DownloadRecord) error {
 
 // List returns saved archives on disk, newest first.
 func (idx *DownloadIndex) List() []DownloadRecord {
-	idx.reconcile()
 	idx.mu.RLock()
 	defer idx.mu.RUnlock()
 
@@ -221,22 +233,36 @@ func (idx *DownloadIndex) reconcile() {
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
 
+	dirty := false
 	pruned := idx.records[:0]
 	seen := map[string]bool{}
 	for _, rec := range idx.records {
 		path := filepath.Clean(rec.ArchivePath)
 		if !idx.fileExists(path) {
+			dirty = true
 			continue
 		}
 		rec.ArchivePath = path
+		if recordNeedsArchiveEnrichment(rec) {
+			prevUID, prevName, prevNexus := rec.UniqueID, rec.ModName, rec.NexusModID
+			idx.enrichRecordFromArchive(&rec)
+			if rec.UniqueID != prevUID || rec.ModName != prevName || rec.NexusModID != prevNexus {
+				dirty = true
+			}
+		}
 		pruned = append(pruned, rec)
 		seen[path] = true
+	}
+	if len(pruned) != len(idx.records) {
+		dirty = true
 	}
 	idx.records = pruned
 
 	entries, err := os.ReadDir(idx.dir)
 	if err != nil {
-		_ = idx.saveLocked()
+		if dirty {
+			_ = idx.saveLocked()
+		}
 		return
 	}
 	for _, entry := range entries {
@@ -260,13 +286,18 @@ func (idx *DownloadIndex) reconcile() {
 			FileName:     entry.Name(),
 			DownloadedAt: info.ModTime().Unix(),
 		}
-		if manifests, err := mods.ManifestsFromArchive(path); err == nil && len(manifests) > 0 {
-			rec.UniqueID = manifests[0].UniqueID
-		}
+		idx.enrichRecordFromArchive(&rec)
 		idx.records = append(idx.records, rec)
+		dirty = true
 		seen[path] = true
 	}
-	_ = idx.saveLocked()
+	if dirty {
+		_ = idx.saveLocked()
+	}
+}
+
+func recordNeedsArchiveEnrichment(rec DownloadRecord) bool {
+	return rec.UniqueID == ""
 }
 
 // RecordDownload archives a completed Nexus download in the index.
@@ -280,9 +311,7 @@ func (idx *DownloadIndex) RecordDownload(modID int, archivePath, fileName string
 		FileName:     fileName,
 		DownloadedAt: time.Now().Unix(),
 	}
-	if manifests, err := mods.ManifestsFromArchive(archivePath); err == nil && len(manifests) > 0 {
-		rec.UniqueID = manifests[0].UniqueID
-	}
+	idx.enrichRecordFromArchive(&rec)
 	_ = idx.Record(rec)
 }
 
@@ -298,10 +327,28 @@ func (idx *DownloadIndex) RecordInstall(archivePath, uniqueID string, nexusModID
 		FileName:     filepath.Base(archivePath),
 		DownloadedAt: time.Now().Unix(),
 	}
-	if uniqueID == "" {
-		if manifests, err := mods.ManifestsFromArchive(archivePath); err == nil && len(manifests) > 0 {
-			rec.UniqueID = manifests[0].UniqueID
+	idx.enrichRecordFromArchive(&rec)
+	_ = idx.Record(rec)
+}
+
+func (idx *DownloadIndex) enrichRecordFromArchive(rec *DownloadRecord) {
+	if rec == nil || rec.ArchivePath == "" || !idx.fileExists(rec.ArchivePath) {
+		return
+	}
+	manifests, err := mods.ManifestsFromArchive(rec.ArchivePath)
+	if err != nil || len(manifests) == 0 {
+		return
+	}
+	manifest := manifests[0]
+	if rec.UniqueID == "" && manifest.UniqueID != "" {
+		rec.UniqueID = manifest.UniqueID
+	}
+	if rec.ModName == "" && manifest.Name != "" {
+		rec.ModName = manifest.Name
+	}
+	if rec.NexusModID == 0 {
+		if id := ModIDFromUpdateKeys(manifest.UpdateKeys); id > 0 {
+			rec.NexusModID = id
 		}
 	}
-	_ = idx.Record(rec)
 }

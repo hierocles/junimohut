@@ -372,6 +372,21 @@ export function dependencyIssuesTooltip(issues) {
 export function dependencyIssueCountLabel(count) {
   return count === 1 ? "1 dependency issue" : `${count} dependency issues`;
 }
+export function unmanagedModCountLabel(count) {
+  return count === 1 ? "1 unmanaged mod" : `${count} unmanaged mods`;
+}
+export function unmanagedModsDialogTitle() {
+  return "Unmanaged mods in game folder";
+}
+export function unmanagedModsDialogMessage() {
+  return "These folders live in your Stardew Valley Mods directory but are not managed by Junimo Hut. They can cause duplicate installs or SMAPI launch errors if they overlap with your library.";
+}
+export function unmanagedModsOpenFolderLabel() {
+  return "Open Mods folder";
+}
+export function unmanagedModsDismissLabel() {
+  return "Got it";
+}
 export function dependencyNotInstalled() {
   return "Not installed";
 }
@@ -416,10 +431,39 @@ export function installDependencyWarningBody(count) {
 export function installAnywayLabel() {
   return "Install anyway";
 }
+export function installOverwriteWarningTitle() {
+  return "No manifest — looks like a file patch";
+}
+export function installOverwriteWarningBody(fileCount) {
+  return fileCount === 1
+    ? "This archive has no manifest.json. Its files match paths inside an installed mod and are usually meant to overwrite files there, not install as a new mod."
+    : "Some archives have no manifest.json. Their files match paths inside installed mods and are usually meant to overwrite files there, not install as new mods.";
+}
+export function installOverwriteConfirmLabel() {
+  return "Merge into mod";
+}
+export function installOverwriteTargetLegend() {
+  return "Merge target";
+}
+export function installOverwriteTargetHint() {
+  return "Choose which installed mod folder should receive these files.";
+}
+export function installOverwriteMatchSummary(matched, total) {
+  return `${matched} of ${total} files match this mod`;
+}
+export function installOverwriteSamplePathsLabel() {
+  return "Sample paths";
+}
+export function modContainsOverwritesLabel() {
+  return "Contains overwrites";
+}
+export function modContainsOverwritesTooltip() {
+  return "File patches were merged into this mod through Junimo Hut. Its files may differ from a clean install.";
+}
 export function installSuggestedTagsHint(count) {
   return count === 1
-    ? "One tag was suggested from Nexus categories. Change or clear before installing."
-    : `${count} tags were suggested from Nexus categories. Change or clear before installing.`;
+    ? "One tag was suggested from mod metadata. Change or clear before installing."
+    : `${count} tags were suggested from mod metadata. Change or clear before installing.`;
 }
 export function dependencyIssuesFooterMessage(count) {
   return count === 1
@@ -449,6 +493,45 @@ export function gridDependencyFilterEmptyTitle() {
 export function gridDependencyFilterEmptyHint() {
   return "Clear the filter to see your full library.";
 }
+export const gridTagsFilterEmptyTitle = "No mods match these tags";
+export const gridTagsFilterEmptyHint =
+  "Turn tags back on in the sidebar, or assign tags to mods.";
+export const gridClearFilter = "Clear filter";
+export const gridQuickStartLabel = "Quick start";
+export const gridUpdatesFilterMeta =
+  "Showing mods with an update in the Status column";
+export const gridDependencyFilterMeta =
+  "Showing mods with missing or unsatisfied dependencies";
+export const gridTagsFilteringMeta =
+  "Hides rows only — enabled mods and SMAPI are unchanged";
+export function gridTagsFilteringBadge(count) {
+  return count === 1 ? "1 tag filtering list" : `${count} tags filtering list`;
+}
+export function gridBulkSelectedLabel(count) {
+  return count === 1 ? "1 selected" : `${count} selected`;
+}
+export const gridBulkEnableSelected = "Enable selected";
+export const gridBulkDisableSelected = "Disable selected";
+export const gridBulkClearSelection = "Clear selection";
+export const gridBulkShiftHint =
+  "Shift+click another row to add to the selection";
+export const gridBulkKeyboardHint =
+  "Ctrl+click to select multiple mods · Shift+click for a range · Esc to clear";
+export const gridSortClearedAnnounce = "Sort cleared";
+export const gridSelectionClearedAnnounce = "Selection cleared";
+export function gridBulkDeleteOpeningAnnounce(count) {
+  return count === 1
+    ? "Opening delete for 1 mod"
+    : `Opening delete for ${count} mods`;
+}
+export const contextMenuOpenFolder = "Open mod folder";
+export const contextMenuOpenManifest = "Open manifest.json";
+export const contextMenuEditConfig = "Edit configs";
+export const contextMenuViewNexus = "View on Nexus Mods";
+export const contextMenuEndorse = "Endorse on Nexus Mods";
+export const contextMenuDownloadUpdate = "Download update";
+export const contextMenuDeleteMod = "Delete mod…";
+export const dialogCancelLabel = "Cancel";
 export function dependenciesMissingSummary(count) {
   return count === 1 ? "1 dependency missing" : `${count} dependencies missing`;
 }
@@ -595,4 +678,123 @@ export function normalizeArchivePaths(paths) {
   }
   return out;
 }
+
+export function configEditorWindowTitle(modName, fileName) {
+  const name = modName.trim() || "Mod";
+  const file = fileName?.trim() || "config.json";
+  return `${name} — ${file}`;
+}
+
+export const configEditorOpen = "Edit configs";
+export const configEditorEditConfig = "Edit configs";
+export const configEditorSidebarModsHeading = "Mods";
+export const configEditorSidebarFilesHeading = "Files";
+export const configEditorSearchModsPlaceholder = "Search mods…";
+export const configEditorNoModsWithJson = "No mods with JSON files in your library.";
+export const configEditorEmptyLibraryHint =
+  "Install mods that include config.json or other .json files, then choose Edit configs from a mod in Junimo Hut.";
+export const configEditorSelectModHint =
+  "Select a mod above to browse its JSON files.";
+export const configEditorNoJsonInMod = "No JSON files in this mod folder.";
+export const configEditorSaveAndSwitch = "Save and switch";
+export const configEditorUnsavedFileSwitchTitle = "Switch file without saving?";
+export const configEditorUnsavedFileSwitchBody =
+  "Your edits have not been saved. Discard them and open the other file?";
+export const configEditorLoadingFile = "Loading file…";
+export const configEditorSave = "Save";
+export const configEditorDiscard = "Discard";
+export const configEditorSaving = "Saving…";
+export const configEditorValidJson = "Valid JSONC";
+export const configEditorInvalidJson = "Invalid JSONC";
+export const configEditorUnsaved = "Unsaved changes";
+export const configEditorSaved = "Config saved";
+export const configEditorOpenExternal = "Open in external editor";
+export const configEditorNoConfig = "This mod has no config.json yet.";
+export const configEditorModMissing = "This mod is no longer in your library.";
+export const configEditorLoadFailed = "Could not load this file.";
+
+export function configEditorLoadFailedFor(path) {
+  const file = path.trim();
+  return file ? `Could not load ${file}.` : configEditorLoadFailed;
+}
+
+export const configEditorLoadingMods = "Loading mods…";
+export const configEditorTitleFallback = "Config editor";
+export const configEditorLoadingFileAria = "Loading config file";
+export const configEditorJsoncHint =
+  "Comments and trailing commas are allowed.";
+
+export function jsoncParseErrorMessage(code) {
+  switch (code) {
+    case 1:
+      return "Invalid character here.";
+    case 2:
+      return "This number is not formatted correctly.";
+    case 3:
+      return "Expected a property name in quotes.";
+    case 4:
+      return "Expected a value here.";
+    case 5:
+      return "Expected a colon after the property name.";
+    case 6:
+      return "Expected a comma between items.";
+    case 7:
+      return "Expected a closing brace `}`.";
+    case 8:
+      return "Expected a closing bracket `]`.";
+    case 9:
+      return "Unexpected end of file.";
+    case 10:
+      return "This comment is not valid here.";
+    case 11:
+      return "Comment was not closed.";
+    case 12:
+      return "String was not closed.";
+    case 13:
+      return "Number was not finished.";
+    case 14:
+      return "Invalid Unicode escape in string.";
+    case 15:
+      return "Invalid escape sequence in string.";
+    case 16:
+      return "Invalid character in JSON.";
+    default:
+      return "Invalid JSONC syntax.";
+  }
+}
+export const configEditorMissingModId = "No mod selected for editing.";
+
+export function configEditorParseError(line, column, message) {
+  if (line > 0 && column > 0) {
+    return `Line ${line}, column ${column}: ${message}`;
+  }
+  return message;
+}
+
+export function configEditorProfileBanner(profileName) {
+  const name = profileName.trim() || "Active profile";
+  return `Profile-specific configs enabled · ${name}`;
+}
+
+export function configEditorSaveFailed(reason) {
+  return reason.trim()
+    ? `Could not save config: ${reason}`
+    : "Could not save config.";
+}
+
+export const configEditorUnsavedCloseTitle = "Discard unsaved changes?";
+export const configEditorUnsavedCloseBody =
+  "Your edits have not been saved. Discard them and close the editor?";
+
+export const configEditorUnsavedSwitchTitle = "Switch mod without saving?";
+export const configEditorUnsavedSwitchBody =
+  "Your edits have not been saved. Discard them and open the other mod's config?";
+
+export const configEditorUnsavedProfileTitle = "Switch profile without saving?";
+export const configEditorUnsavedProfileBody =
+  "The config editor has unsaved changes. Discard them and switch profiles?";
+
+export const configEditorDiscardConfirmTitle = "Discard changes?";
+export const configEditorDiscardConfirmBody =
+  "Reload the file from disk and lose your unsaved edits?";
 //# sourceMappingURL=copy.js.map

@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -75,6 +76,7 @@ func TestDownloadIndexPrunesMissingFiles(t *testing.T) {
 
 	reloaded, err := NewDownloadIndex(dataDir, downloadsDir)
 	must.NoError(err)
+	reloaded.Reconcile()
 	_, ok := reloaded.FindForMod("Author.Gone", 0)
 	must.False(ok)
 }
@@ -122,9 +124,80 @@ func TestDownloadIndexReconcileIndexesUnlistedArchive(t *testing.T) {
 
 	idx, err := NewDownloadIndex(dataDir, downloadsDir)
 	must.NoError(err)
+	idx.Reconcile()
 	path, ok := idx.FindForMod("Author.Scanned", 0)
 	must.True(ok)
 	must.Equal(archive, path)
+
+	list := idx.List()
+	must.Len(list, 1)
+	must.Equal("Scanned", list[0].ModName)
+}
+
+func TestDownloadIndexEnrichesNumericUpdateKeys(t *testing.T) {
+	t.Parallel()
+	must := require.New(t)
+
+	dataDir := t.TempDir()
+	downloadsDir := filepath.Join(dataDir, "downloads")
+	must.NoError(os.MkdirAll(downloadsDir, 0o755))
+
+	archive := filepath.Join(downloadsDir, "PetFacelift.zip")
+	writeTestZip(t, archive, map[string]string{
+		"(AT) Pet Facelift/manifest.json": `{
+			"Name":"[AT] Pet Facelift",
+			"Author":"siamece",
+			"Version":"1.1.0",
+			"UniqueID":"siamece.AT.PetFacelift",
+			"UpdateKeys":[9097],
+			"ContentPackFor":{"UniqueID":"PeacefulEnd.AlternativeTextures"}
+		}`,
+	})
+
+	idx, err := NewDownloadIndex(dataDir, downloadsDir)
+	must.NoError(err)
+	idx.Reconcile()
+	list := idx.List()
+	must.Len(list, 1)
+	must.Equal("siamece.AT.PetFacelift", list[0].UniqueID)
+	must.Equal("[AT] Pet Facelift", list[0].ModName)
+	must.Equal(9097, list[0].NexusModID)
+
+	// Second reconcile should not rewrite the index when metadata is complete.
+	info, err := os.Stat(filepath.Join(dataDir, "downloads.json"))
+	must.NoError(err)
+	firstMod := info.ModTime()
+	time.Sleep(10 * time.Millisecond)
+	idx.Reconcile()
+	info, err = os.Stat(filepath.Join(dataDir, "downloads.json"))
+	must.NoError(err)
+	must.Equal(firstMod, info.ModTime())
+}
+
+func TestDownloadIndexReconcileBackfillsMissingUniqueID(t *testing.T) {
+	t.Parallel()
+	must := require.New(t)
+
+	dataDir := t.TempDir()
+	downloadsDir := filepath.Join(dataDir, "downloads")
+	must.NoError(os.MkdirAll(downloadsDir, 0o755))
+
+	archive := filepath.Join(downloadsDir, "KnownMod.zip")
+	writeTestZip(t, archive, map[string]string{
+		"manifest.json": `{"Name":"Known Mod","Author":"A","Version":"1.0.0","UniqueID":"Author.KnownMod"}`,
+	})
+
+	must.NoError(os.WriteFile(filepath.Join(dataDir, "downloads.json"), []byte(`{
+		"records":[{"archivePath":`+strconv.Quote(filepath.ToSlash(archive))+`,"fileName":"KnownMod.zip","downloadedAt":100}]
+	}`), 0o644))
+
+	idx, err := NewDownloadIndex(dataDir, downloadsDir)
+	must.NoError(err)
+	idx.Reconcile()
+	list := idx.List()
+	must.Len(list, 1)
+	must.Equal("Author.KnownMod", list[0].UniqueID)
+	must.Equal("Known Mod", list[0].ModName)
 }
 
 func TestDownloadIndexInDownloadsDir(t *testing.T) {

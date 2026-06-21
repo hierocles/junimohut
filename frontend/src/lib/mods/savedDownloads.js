@@ -1,9 +1,13 @@
-import { downloadUnknownModLabel } from "$lib/copy";
+import { downloadUnknownModLabel, pathBasename } from "$lib/copy";
 import { nexusModIdFromUpdateKey } from "$lib/mods/nexusTags";
+function archiveFileLabel(record) {
+    const name = record.fileName?.trim() || pathBasename(record.archivePath ?? "");
+    return name.replace(/\.(zip|7z|rar)$/i, "").trim();
+}
 export function resolveArchiveMod(record, mods) {
     const uniqueId = record.uniqueId?.trim() ?? "";
     if (uniqueId) {
-        const mod = mods.find((m) => m.manifest?.UniqueID === uniqueId);
+        const mod = mods.find((m) => (m.manifest?.UniqueID ?? "").toLowerCase() === uniqueId.toLowerCase());
         if (mod)
             return { displayName: mod.manifest.Name, mod };
     }
@@ -16,11 +20,18 @@ export function resolveArchiveMod(record, mods) {
         if (mod)
             return { displayName: mod.manifest.Name, mod };
     }
+    const modName = record.modName?.trim() ?? "";
+    if (modName)
+        return { displayName: modName, mod: null };
+    const fileLabel = archiveFileLabel(record);
+    if (fileLabel)
+        return { displayName: fileLabel, mod: null };
     return { displayName: downloadUnknownModLabel, mod: null };
 }
 export function archiveSearchText(record, displayName) {
     return [
         displayName,
+        record.modName ?? "",
         record.fileName ?? "",
         record.uniqueId ?? "",
         record.archivePath ?? "",

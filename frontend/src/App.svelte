@@ -3,7 +3,9 @@
   import { Events } from "@wailsio/runtime";
   import * as API from "$lib/api";
   import {
-    refreshAll,
+    refreshCore,
+    refreshFooterStats,
+    fetchLibraryMods,
     setModEnabled,
     previewInstallDependencies,
     USE_MOCK_DATA,
@@ -13,6 +15,7 @@
     type Settings,
     type InstallResult,
     type InstallOptions,
+    type UnmanagedMod,
   } from "$lib/api/client";
   import { loadTranslations } from "$lib/i18n";
   import {
@@ -27,6 +30,11 @@
     hutProverb,
     dependencyIssuesFooterMessage,
     dependencyIssueCountLabel,
+    unmanagedModCountLabel,
+    unmanagedModsDialogTitle,
+    unmanagedModsDialogMessage,
+    unmanagedModsOpenFolderLabel,
+    unmanagedModsDismissLabel,
     updatesFilterFooterMessage,
     statusDismissLabel,
     toolbarProfileAria,
@@ -83,18 +91,20 @@
     downloadsLoadError,
     downloadsBulkReinstallConfirmTitle,
     downloadsBulkReinstallConfirmMessage,
+    configEditorUnsavedProfileTitle,
+    configEditorUnsavedProfileBody,
   } from "$lib/copy";
   import {
     parseNxmModId,
     nexusModIdFromUpdateKey,
-    suggestedTagIdsForNexusMods,
+    suggestedTagIdsForInstall,
   } from "$lib/mods/nexusTags";
   import { nexusModPageUrl } from "$lib/mods/dependencies";
   import { openExternalUrl } from "$lib/wails/openExternalUrl";
   import type { GridStatusFilter } from "$lib/mods/filter";
   import { displayModName } from "$lib/mods/names";
   import type { SavedDownloadRecord } from "$lib/mods/savedDownloads";
-  import { getMockSavedDownloads } from "$lib/mock/designData";
+  import { applyDocumentTheme } from "$lib/themes/applyDocumentTheme";
   import {
     Settings as SettingsIcon,
     Download,
@@ -118,11 +128,15 @@
 
   let settings = $state<Settings | null>(null);
   let mods = $state<Mod[]>([]);
+  let libraryMods = $state<Mod[]>([]);
   let profiles = $state<Profile[]>([]);
   let categories = $state<Category[]>([]);
   let smapiVersion = $state("");
   let readyCount = $state(0);
   let dependencyIssueCount = $state(0);
+  let unmanagedModCount = $state(0);
+  let unmanagedMods = $state<UnmanagedMod[]>([]);
+  let unmanagedModsOpen = $state(false);
   let gridStatusFilter = $state<GridStatusFilter>("none");
   let search = $state("");
   let selectedModId = $state<string | null>(null);
@@ -155,6 +169,8 @@
   let installQueue = $state<string[]>([]);
   let installUpdateTarget = $state<Mod | null>(null);
   let installSuggestedTagIds = $state<string[]>([]);
+  let installFromNexus = $state(false);
+  let pendingNexusModIds = $state<number[]>([]);
   let nexusDownloadInFlight = $state(false);
   let pendingNexusDownloadPath = $state("");
   let downloadPollTimer: ReturnType<typeof setInterval> | undefined;
@@ -186,6 +202,7 @@
         record: SavedDownloadRecord;
         displayName: string;
       }
+    | { kind: "switch-profile-config"; profileId: string }
     | null
   >(null);
   let reinstallDeleteOld = $state(false);
@@ -194,6 +211,7 @@
   let profileDialogEl = $state<HTMLDialogElement | null>(null);
 
   let loadSeq = 0;
+  let lastLoadKey = "";
   let titleClickTimer: ReturnType<typeof setTimeout> | undefined;
   let aboutDebounceTimer: ReturnType<typeof setTimeout> | undefined;
   let lastSmapiVersion = $state("");
@@ -267,12 +285,7 @@
       nexusConnected = false;
       return;
     }
-    try {
-      nexusConnected = await API.ValidateNexusAPIKey();
-    } catch (e) {
-      // Auth failure: key was revoked or mistyped. Network blip: keep "connected" if a key exists.
-      nexusConnected = !isNexusKeyRejected(e);
-    }
+    nexusConnected = await API.ProbeNexusAPIKey();
   }
 
   function openProfileDialog() {
@@ -375,6 +388,8 @@
         return downloadsBulkReinstallConfirmTitle;
       case "reinstall-saved":
         return reinstallSavedConfirmTitle;
+      case "switch-profile-config":
+        return configEditorUnsavedProfileTitle;
       default:
         return "Delete tag?";
     }
@@ -404,6 +419,8 @@
           displayModName(pendingConfirm.mod),
           pendingConfirm.archivePath,
         );
+      case "switch-profile-config":
+        return configEditorUnsavedProfileBody;
       default:
         return "";
     }
@@ -422,6 +439,8 @@
       case "reinstall-saved-batch":
       case "reinstall-saved":
         return reinstallSavedConfirmLabel;
+      case "switch-profile-config":
+        return "Switch profile";
       default:
         return "Delete tag";
     }
@@ -506,29 +525,57 @@
   }
 
   async function load() {
+    const search = searchDebounced;
+    let filter = hideDisabled;
+    const key = `${search}\0${filter}`;
+    if (key === lastLoadKey) return;
+
     const seq = ++loadSeq;
     loading = true;
     loadError = "";
     try {
-      const data = await refreshAll({ search: searchDebounced, hideDisabled });
+      let core = await refreshCore({ search, hideDisabled: filter });
       if (seq !== loadSeq) return;
-      mods = data.mods;
-      profiles = data.profiles;
-      categories = data.categories;
-      settings = data.settings;
-      smapiVersion = data.smapiVersion;
-      readyCount = data.readyCount;
-      dependencyIssueCount = data.dependencyIssueCount ?? 0;
-      if (settings?.theme) {
-        document.documentElement.setAttribute("data-theme", settings.theme);
-      } else {
-        document.documentElement.setAttribute("data-theme", "stardew-dark");
+      const savedFilter = core.settings?.hideDisabledFilter ?? "none";
+      if (settings === null && filter !== savedFilter) {
+        filter = savedFilter;
+        core = await refreshCore({ search, hideDisabled: filter });
+        if (seq !== loadSeq) return;
       }
+      mods = core.mods;
+      if (search === "" && filter === "none") {
+        libraryMods = core.mods;
+      }
+      profiles = core.profiles;
+      categories = core.categories;
+      settings = core.settings;
+      smapiVersion = core.smapiVersion;
+      applyDocumentTheme(settings?.theme ?? "stardew-dark");
+      lastLoadKey = `${search}\0${filter}`;
     } catch (e) {
       if (seq !== loadSeq) return;
       loadError = formatUserError(e);
     } finally {
       if (seq === loadSeq) loading = false;
+    }
+    if (seq !== loadSeq) return;
+    try {
+      const stats = await refreshFooterStats();
+      if (seq !== loadSeq) return;
+      readyCount = stats.readyCount;
+      dependencyIssueCount = stats.dependencyIssueCount;
+      unmanagedMods = stats.unmanagedMods;
+      unmanagedModCount = unmanagedMods.length;
+    } catch {
+      /* footer counts are non-critical */
+    }
+  }
+
+  async function refreshLibraryMods() {
+    try {
+      libraryMods = await fetchLibraryMods();
+    } catch {
+      /* downloads panel can retry via refresh */
     }
   }
 
@@ -536,7 +583,10 @@
     loadTranslations("en");
     void refreshNexusConnection();
     void checkSMAPIUpdate();
-    Events.On("mods-changed", () => load());
+    Events.On("mods-changed", () => {
+      if (loading) return;
+      void load();
+    });
     Events.On("nxm-url", (ev) => {
       if (ev.data) void handleNXMURL(ev.data);
     });
@@ -544,9 +594,6 @@
       const path = ev.data?.trim() ?? "";
       if (!path) return;
       pendingNexusDownloadPath = path;
-      if (nexusDownloadInFlight && installModalOpen) {
-        installQueue = [path];
-      }
     });
     return () => {
       clearStatusDismissTimer();
@@ -602,6 +649,7 @@
 
   async function fetchSavedDownloads(): Promise<SavedDownloadRecord[]> {
     if (USE_MOCK_DATA) {
+      const { getMockSavedDownloads } = await import("$lib/mock/designData");
       savedDownloads = getMockSavedDownloads();
       return savedDownloads;
     }
@@ -629,6 +677,7 @@
       let failed = false;
 
       if (USE_MOCK_DATA) {
+        const { getMockSavedDownloads } = await import("$lib/mock/designData");
         savedDownloads = getMockSavedDownloads();
       } else {
         try {
@@ -670,53 +719,69 @@
     return latestCompletedDownloadPath(entries);
   }
 
-  function applyDownloadedArchive(path: string): boolean {
+  function openNexusInstallModal(
+    path: string,
+    modIds: number[],
+    updateTarget: Mod | null = null,
+  ): boolean {
     const trimmed = path.trim();
-    if (trimmed) {
-      installQueue = [trimmed];
-      return true;
-    }
-    return installQueue.some((entry) => entry.trim().length > 0);
-  }
-
-  function beginInstallDownload(updateTarget: Mod | null = null) {
+    if (!trimmed) return false;
     installUpdateTarget = updateTarget;
-    installQueue = [];
+    installQueue = [trimmed];
+    pendingNexusModIds = modIds;
+    installFromNexus = true;
+    installSuggestedTagIds = [];
     installModalOpen = true;
+    return true;
   }
 
-  async function loadInstallSuggestedTags(modIds: number[]) {
-    const unique = [...new Set(modIds.filter((id) => id > 0))];
-    if (unique.length === 0) {
+  async function loadInstallSuggestedTags(paths: string[], modIds: number[]) {
+    const uniqueModIds = [...new Set(modIds.filter((id) => id > 0))];
+    const uniquePaths = [
+      ...new Set(paths.map((p) => p.trim()).filter(Boolean)),
+    ];
+    if (uniqueModIds.length === 0 && uniquePaths.length === 0) {
       installSuggestedTagIds = [];
       return;
     }
     const known = new Set(categories.map((c) => c.id));
     if (USE_MOCK_DATA) {
-      installSuggestedTagIds = suggestedTagIdsForNexusMods(unique, known);
+      installSuggestedTagIds = suggestedTagIdsForInstall(
+        uniquePaths,
+        uniqueModIds,
+        known,
+      );
       return;
     }
     try {
-      const ids = (await API.GetNexusSuggestedTags(unique)) ?? [];
+      const ids =
+        (await API.GetInstallSuggestedTags(uniquePaths, uniqueModIds)) ?? [];
       installSuggestedTagIds = ids.filter((id) => known.has(id));
     } catch {
       installSuggestedTagIds = [];
     }
   }
 
+  $effect(() => {
+    if (!installModalOpen) return;
+    const paths = installQueue;
+    const modIds = pendingNexusModIds;
+    void loadInstallSuggestedTags(paths, modIds);
+  });
+
   async function handleNXMURL(url: string) {
     if (nexusDownloadInFlight) return;
     nexusDownloadInFlight = true;
     pendingNexusDownloadPath = "";
     const nexusModId = parseNxmModId(url);
-    void loadInstallSuggestedTags(nexusModId ? [nexusModId] : []);
+    const modIds = nexusModId ? [nexusModId] : [];
+    pendingNexusModIds = modIds;
     try {
       setStatus(downloadingModFromNexus, "default", { progress: true });
       startDownloadPolling();
-      beginInstallDownload();
       const rpcPath = await API.HandleNXMURL(url);
       const path = await resolveDownloadedArchivePath(rpcPath);
-      if (!applyDownloadedArchive(path)) {
+      if (!openNexusInstallModal(path, modIds)) {
         setError(downloadNoArchivePath);
         return;
       }
@@ -724,7 +789,7 @@
       await refreshDownloads();
     } catch (e) {
       const path = await resolveDownloadedArchivePath(undefined);
-      if (applyDownloadedArchive(path)) {
+      if (openNexusInstallModal(path, modIds)) {
         setStatus(downloadCompleteReview, "success");
       } else {
         setError(e);
@@ -795,9 +860,24 @@
 
   async function switchProfile(id: string) {
     if (renamingProfileId) return;
+    if (activeProfile?.id === id) return;
     try {
+      if (await API.ConfigEditorIsDirty()) {
+        pendingConfirm = { kind: "switch-profile-config", profileId: id };
+        return;
+      }
       await API.SetActiveProfile(id);
+      await API.ReloadConfigEditor();
       await load();
+    } catch (e) {
+      setError(e);
+    }
+  }
+
+  async function openConfigEditor(mod: Mod) {
+    if (!mod.hasJsonFiles) return;
+    try {
+      await API.OpenModConfigEditor(mod.id);
     } catch (e) {
       setError(e);
     }
@@ -899,6 +979,8 @@
     const incoming = opts?.trusted ? trimmed : normalizeArchivePaths(trimmed);
     installUpdateTarget = updateTarget;
     installQueue = incoming;
+    pendingNexusModIds = [];
+    installFromNexus = false;
     installSuggestedTagIds = [];
     installModalOpen = true;
   }
@@ -907,6 +989,8 @@
     installModalOpen = false;
     installQueue = [];
     installUpdateTarget = null;
+    pendingNexusModIds = [];
+    installFromNexus = false;
     installSuggestedTagIds = [];
   }
 
@@ -958,7 +1042,11 @@
       }
 
       const results =
-        (await API.InstallMods(paths, options.useFolderDisplayNames ?? false)) ?? [];
+        (await API.InstallMods(
+          paths,
+          options.useFolderDisplayNames ?? false,
+          options.overwriteTargets ?? {},
+        )) ?? [];
       const installed = results.filter((r) => !r.error);
       const failed = results.length - installed.length;
       const tone = failed === 0 ? "success" : "error";
@@ -1035,6 +1123,9 @@
         case "openManifest":
           await API.OpenManifest(mod.folderPath);
           break;
+        case "editConfig":
+          await openConfigEditor(mod);
+          break;
         case "rename":
           selectedModId = mod.id;
           await tick();
@@ -1072,7 +1163,8 @@
           nexusDownloadInFlight = true;
           pendingNexusDownloadPath = "";
           const nexusModId = nexusModIdFromUpdateKey(key);
-          void loadInstallSuggestedTags(nexusModId ? [nexusModId] : []);
+          const modIds = nexusModId ? [nexusModId] : [];
+          pendingNexusModIds = modIds;
           try {
             setStatus(
               downloadingUpdateForMessage(displayModName(mod)),
@@ -1080,13 +1172,12 @@
               { progress: true },
             );
             startDownloadPolling();
-            beginInstallDownload(mod);
             const rpcPath = await API.DownloadModUpdate(
               key,
               displayModName(mod),
             );
             const path = await resolveDownloadedArchivePath(rpcPath);
-            if (!applyDownloadedArchive(path)) {
+            if (!openNexusInstallModal(path, modIds, mod)) {
               setError(downloadNoArchivePath);
               break;
             }
@@ -1097,7 +1188,7 @@
             await refreshDownloads();
           } catch (e) {
             const path = await resolveDownloadedArchivePath(undefined);
-            if (applyDownloadedArchive(path)) {
+            if (openNexusInstallModal(path, modIds, mod)) {
               setStatus(
                 updateDownloadedForMessage(displayModName(mod)),
                 "success",
@@ -1245,6 +1336,10 @@
           deletedDownloadMessage(pendingConfirm.displayName),
           "success",
         );
+      } else if (pendingConfirm.kind === "switch-profile-config") {
+        await API.SetConfigEditorDirty(false);
+        await API.SetActiveProfile(pendingConfirm.profileId);
+        await API.ReloadConfigEditor();
       }
       pendingConfirm = null;
       reinstallDeleteOld = false;
@@ -1289,7 +1384,7 @@
       await API.SaveSettings(s);
       settings = s;
       if (s.theme) {
-        document.documentElement.setAttribute("data-theme", s.theme);
+        applyDocumentTheme(s.theme);
       }
       if (!settingsOpen) {
         await load();
@@ -1341,7 +1436,10 @@
       return;
     }
     downloadsOpen = true;
-    void refreshDownloads({ background: downloadsEverLoaded });
+    void Promise.all([
+      refreshDownloads({ background: downloadsEverLoaded }),
+      refreshLibraryMods(),
+    ]);
   }
 
   function viewModFromDownloads(modId: string) {
@@ -1358,6 +1456,8 @@
     if (!incoming.length) return;
     installUpdateTarget = null;
     installQueue = incoming;
+    installFromNexus = false;
+    pendingNexusModIds = [];
     installModalOpen = true;
   }
 
@@ -1525,6 +1625,17 @@
           >
             <span class="update-badge-count">{dependencyIssueCount}</span>
             <span>{dependencyIssueCountLabel(dependencyIssueCount)}</span>
+          </button>
+        {/if}
+        {#if unmanagedModCount > 0}
+          <button
+            type="button"
+            class="update-badge update-badge--unmanaged"
+            onclick={() => (unmanagedModsOpen = true)}
+            title="Show mods installed directly in the game Mods folder"
+          >
+            <span class="update-badge-count">{unmanagedModCount}</span>
+            <span>{unmanagedModCountLabel(unmanagedModCount)}</span>
           </button>
         {/if}
       </div>
@@ -1916,6 +2027,7 @@
               onenabledependency={(modId) => toggleMod(modId, true)}
               onselectmod={(id) => (selectedModId = id)}
               onsetcustomname={setModCustomName}
+              oneditconfig={openConfigEditor}
             />
           {/if}
         </div>
@@ -1923,7 +2035,7 @@
           <DownloadsPanel
             activeDownloads={downloads ?? []}
             {savedDownloads}
-            {mods}
+            mods={libraryMods}
             loading={downloadsLoading}
             refreshing={downloadsRefreshing}
             fetchError={downloadsFetchError}
@@ -1952,6 +2064,7 @@
   open={installModalOpen}
   bind:paths={installQueue}
   updateTarget={installUpdateTarget}
+  manualQueue={!installFromNexus}
   alwaysAskDeleteOnUpdate={settings?.alwaysAskDeleteOnUpdate ?? false}
   {categories}
   {modsRoot}
@@ -1981,6 +2094,36 @@
 />
 
 <AboutDialog open={aboutOpen} onclose={() => (aboutOpen = false)} />
+
+<ConfirmDialog
+  open={unmanagedModsOpen}
+  title={unmanagedModsDialogTitle()}
+  message={unmanagedModsDialogMessage()}
+  confirmLabel={unmanagedModsOpenFolderLabel()}
+  cancelLabel={unmanagedModsDismissLabel()}
+  onconfirm={async () => {
+    try {
+      await API.OpenActiveModsFolder();
+    } catch (e) {
+      setError(e);
+    } finally {
+      unmanagedModsOpen = false;
+    }
+  }}
+  oncancel={() => (unmanagedModsOpen = false)}
+>
+  <ul class="unmanaged-mod-list layout-stack-xs" role="list">
+    {#each unmanagedMods as entry (entry.folderName)}
+      <li class="unmanaged-mod-item">
+        <span class="type-ui text-surface-100">{entry.name}</span>
+        <span class="type-caption type-meta type-mono">{entry.folderName}</span>
+        {#if entry.uniqueID}
+          <span class="type-caption type-meta">{entry.uniqueID}</span>
+        {/if}
+      </li>
+    {/each}
+  </ul>
+</ConfirmDialog>
 
 <ConfirmDialog
   open={confirmOpen}
@@ -2104,6 +2247,53 @@
   .update-badge--deps .update-badge-count {
     color: var(--color-surface-50);
     background-color: var(--color-error-500);
+  }
+
+  .update-badge--unmanaged {
+    color: var(--sdvm-warning-fg);
+    background-color: var(--sdvm-warning-bg);
+    border-color: var(--sdvm-warning-border);
+  }
+
+  .update-badge--unmanaged:hover {
+    background-color: color-mix(
+      in oklab,
+      var(--color-warning-500) 22%,
+      var(--color-surface-900)
+    );
+  }
+
+  .update-badge--unmanaged:focus-visible {
+    outline: 2px solid
+      color-mix(in oklab, var(--color-warning-500) 50%, transparent);
+    outline-offset: 2px;
+  }
+
+  .update-badge--unmanaged .update-badge-count {
+    color: var(--color-surface-950);
+    background-color: var(--color-warning-400);
+  }
+
+  .unmanaged-mod-list {
+    max-height: 16rem;
+    overflow: auto;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .unmanaged-mod-item {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--color-surface-700);
+    border-radius: var(--radius-base, 0.25rem);
+    background-color: color-mix(
+      in oklab,
+      var(--color-surface-800) 80%,
+      transparent
+    );
   }
 
   .update-badge--active {

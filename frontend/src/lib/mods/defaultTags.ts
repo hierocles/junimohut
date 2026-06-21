@@ -14,6 +14,7 @@ export const DEFAULT_TAG_IDS = {
   audio: "tag-audio",
   framework: "tag-framework",
   cheats: "tag-cheats",
+  fashionSense: "tag-fashion-sense",
 } as const;
 
 export type DefaultTagKey = keyof typeof DEFAULT_TAG_IDS;
@@ -102,6 +103,13 @@ export const DEFAULT_TAGS: Omit<Category, "modIds">[] = [
     color: "#f97316",
     visible: true,
     sortOrder: 11,
+  },
+  {
+    id: DEFAULT_TAG_IDS.fashionSense,
+    name: "Fashion Sense",
+    color: "#ec4899",
+    visible: true,
+    sortOrder: 12,
   },
 ];
 

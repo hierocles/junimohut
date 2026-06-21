@@ -31,87 +31,101 @@ func (s *Scanner) Scan(opts ScanOptions) ([]Mod, error) {
 
 	var mods []Mod
 	seen := map[string]bool{}
-
-	err := filepath.WalkDir(opts.ModsRoot, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		if d.IsDir() {
-			if path == opts.ModsRoot {
-				return nil
-			}
-			if opts.IgnoreHiddenFolders && hasHiddenParent(path, opts.ModsRoot) {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !strings.EqualFold(d.Name(), "manifest.json") {
-			return nil
-		}
-
-		if !IsRootModManifest(path, opts.ModsRoot) {
-			return nil
-		}
-
-		modDir := filepath.Dir(path)
-		rel, err := filepath.Rel(opts.ModsRoot, modDir)
-		if err != nil {
-			return nil
-		}
-		rel = filepath.ToSlash(rel)
-		if seen[rel] {
-			return nil
-		}
-		seen[rel] = true
-
-		manifest, err := ParseManifest(path)
-		if err != nil || manifest.UniqueID == "" {
-			return nil
-		}
-
-		id := ModID(rel, manifest.UniqueID)
-		enabled := true
-		if opts.EnabledMods != nil {
-			if v, ok := opts.EnabledMods[id]; ok {
-				enabled = v
-			}
-		}
-		if CoreModIDs[manifest.UniqueID] {
-			enabled = true
-		}
-
-		info, _ := d.Info()
-		var modTime int64
-		if info != nil {
-			modTime = info.ModTime().Unix()
-		}
-
-		configPath := filepath.Join(modDir, "config.json")
-		_, hasConfig := os.Stat(configPath)
-
-		groupKey, groupLabel := groupForMod(rel, manifest, opts.Grouping)
-
-		mods = append(mods, Mod{
-			ID:           id,
-			FolderPath:   rel,
-			AbsolutePath: modDir,
-			Manifest:     manifest,
-			Enabled:      enabled,
-			GroupKey:     groupKey,
-			GroupLabel:   groupLabel,
-			UpdateStatus: UpdateStatus{State: "current"},
-			HasConfig:    hasConfig == nil,
-			IsCoreMod:    CoreModIDs[manifest.UniqueID],
-			InstallTime:  modTime,
-			LastUpdated:  modTime,
-		})
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
+	s.scanDir(opts, opts.ModsRoot, &mods, seen)
 	mods = CollapseSiblingPacks(mods, opts.ModsRoot, opts.EnabledMods)
 	return mods, nil
+}
+
+// scanDir walks the library tree without descending into mod asset folders.
+func (s *Scanner) scanDir(opts ScanOptions, dir string, mods *[]Mod, seen map[string]bool) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+
+	var manifestPath string
+	var subdirs []string
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() {
+			subpath := filepath.Join(dir, name)
+			if opts.IgnoreHiddenFolders && (strings.HasPrefix(name, ".") || hasHiddenParent(subpath, opts.ModsRoot)) {
+				continue
+			}
+			subdirs = append(subdirs, subpath)
+			continue
+		}
+		if manifestPath == "" && strings.EqualFold(name, "manifest.json") {
+			manifestPath = filepath.Join(dir, name)
+		}
+	}
+
+	if manifestPath != "" && IsRootModManifest(manifestPath, opts.ModsRoot) {
+		if mod, ok := modFromManifest(opts, manifestPath, seen); ok {
+			*mods = append(*mods, mod)
+		}
+		return
+	}
+
+	for _, sub := range subdirs {
+		s.scanDir(opts, sub, mods, seen)
+	}
+}
+
+func modFromManifest(opts ScanOptions, manifestPath string, seen map[string]bool) (Mod, bool) {
+	modDir := filepath.Dir(manifestPath)
+	rel, err := filepath.Rel(opts.ModsRoot, modDir)
+	if err != nil {
+		return Mod{}, false
+	}
+	rel = filepath.ToSlash(rel)
+	if seen[rel] {
+		return Mod{}, false
+	}
+	seen[rel] = true
+
+	manifest, err := ParseManifest(manifestPath)
+	if err != nil || manifest.UniqueID == "" {
+		return Mod{}, false
+	}
+
+	id := ModID(rel, manifest.UniqueID)
+	enabled := true
+	if opts.EnabledMods != nil {
+		if v, ok := opts.EnabledMods[id]; ok {
+			enabled = v
+		}
+	}
+	if CoreModIDs[manifest.UniqueID] {
+		enabled = true
+	}
+
+	info, _ := os.Stat(manifestPath)
+	var modTime int64
+	if info != nil {
+		modTime = info.ModTime().Unix()
+	}
+
+	configPath := filepath.Join(modDir, "config.json")
+	_, hasConfig := os.Stat(configPath)
+	groupKey, groupLabel := groupForMod(rel, manifest, opts.Grouping)
+
+	return Mod{
+		ID:           id,
+		FolderPath:   rel,
+		AbsolutePath: modDir,
+		Manifest:     manifest,
+		Enabled:      enabled,
+		GroupKey:     groupKey,
+		GroupLabel:   groupLabel,
+		UpdateStatus: UpdateStatus{State: "current"},
+		HasConfig:    hasConfig == nil,
+		// Cheap signal for the config editor; full JSON tree is counted on demand.
+		HasJsonFiles: hasConfig == nil,
+		IsCoreMod:    CoreModIDs[manifest.UniqueID],
+		InstallTime:  modTime,
+		LastUpdated:  modTime,
+	}, true
 }
 
 func hasHiddenParent(path, root string) bool {

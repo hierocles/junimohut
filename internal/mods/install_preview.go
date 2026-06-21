@@ -13,49 +13,59 @@ import (
 func PreviewInstallNames(archivePaths []string) ([]InstallNamePreview, error) {
 	var previews []InstallNamePreview
 	for _, archivePath := range archivePaths {
-		preview, err := previewInstallNamesForArchive(archivePath)
+		preview, ok, err := previewInstallNamesForArchive(archivePath)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", filepath.Base(archivePath), err)
 		}
-		previews = append(previews, preview)
+		if ok {
+			previews = append(previews, preview)
+		}
 	}
 	return previews, nil
 }
 
-func previewInstallNamesForArchive(archivePath string) (InstallNamePreview, error) {
+func previewInstallNamesForArchive(archivePath string) (InstallNamePreview, bool, error) {
 	tmpDir, err := os.MkdirTemp("", "sdvm-name-preview-*")
 	if err != nil {
-		return InstallNamePreview{}, err
+		return InstallNamePreview{}, false, err
 	}
 	defer os.RemoveAll(tmpDir)
 
 	if err := archive.Extract(archivePath, tmpDir); err != nil {
-		return InstallNamePreview{}, fmt.Errorf("extract archive: %w", err)
+		return InstallNamePreview{}, false, fmt.Errorf("extract archive: %w", err)
+	}
+
+	looksLikePatch, err := ArchiveLooksLikeOverwritePatch(tmpDir)
+	if err != nil {
+		return InstallNamePreview{}, false, err
+	}
+	if looksLikePatch {
+		return InstallNamePreview{}, false, nil
 	}
 
 	manifests, err := findAllManifests(tmpDir)
 	if err != nil {
-		return InstallNamePreview{}, err
+		return InstallNamePreview{}, false, err
 	}
 	manifests = FilterRootManifests(manifests, tmpDir)
 	if len(manifests) == 0 {
-		return InstallNamePreview{}, fmt.Errorf("no manifest.json found in archive")
+		return InstallNamePreview{}, false, fmt.Errorf("no manifest.json found in archive")
 	}
 
 	units, err := resolveInstallUnits(tmpDir, manifests)
 	if err != nil {
-		return InstallNamePreview{}, err
+		return InstallNamePreview{}, false, err
 	}
 
 	mods := make([]InstallModNamePreview, 0, len(units))
 	for _, unit := range units {
 		manifestPath, err := FindManifestPath(unit.srcDir)
 		if err != nil {
-			return InstallNamePreview{}, err
+			return InstallNamePreview{}, false, err
 		}
 		manifest, err := ParseManifest(manifestPath)
 		if err != nil {
-			return InstallNamePreview{}, err
+			return InstallNamePreview{}, false, err
 		}
 		mods = append(mods, InstallModNamePreview{
 			OfficialName: strings.TrimSpace(manifest.Name),
@@ -69,7 +79,7 @@ func previewInstallNamesForArchive(archivePath string) (InstallNamePreview, erro
 		ArchivePath:            archivePath,
 		Mods:                   mods,
 		NeedsDisplayNameChoice: PreviewNeedsDisplayNameChoice(mods),
-	}, nil
+	}, true, nil
 }
 
 // PreviewNeedsDisplayNameChoice reports whether users should pick between official

@@ -64,6 +64,34 @@ export interface InstallNamePreview {
 }
 
 /**
+ * InstallOverwriteCandidate describes a mod folder that may receive merged patch files.
+ */
+export interface InstallOverwriteCandidate {
+    "folderPath": string;
+    "modName": string;
+    "uniqueID": string;
+    "matchedFiles": number;
+    "totalFiles": number;
+    "samplePaths"?: string[] | null;
+}
+
+/**
+ * InstallOverwritePreview describes a no-manifest archive that may overwrite files in an installed mod.
+ */
+export interface InstallOverwritePreview {
+    "archivePath": string;
+    "fileCount": number;
+    "candidates": InstallOverwriteCandidate[] | null;
+    "suggestedTarget"?: string;
+
+    /**
+     * blocked | confirm
+     */
+    "state": string;
+    "blockReason"?: string;
+}
+
+/**
  * InstallResult describes an installed mod.
  */
 export interface InstallResult {
@@ -107,13 +135,32 @@ export interface Mod {
     "groupLabel": string;
     "updateStatus": UpdateStatus;
     "hasConfig": boolean;
+    "hasJsonFiles": boolean;
+    "jsonFileCount": number;
     "isCoreMod": boolean;
     "installTime": number;
     "lastUpdated": number;
     "dependencyIssues": DependencyIssue[] | null;
     "missingDependencyCount": number;
+    "packSiblingUIDs"?: string[] | null;
     "savedDownloadPath"?: string;
     "customName"?: string;
+    "containsOverwrites": boolean;
+}
+
+/**
+ * ModConfigView is the payload for the integrated config editor.
+ */
+export interface ModConfigView {
+    "modId": string;
+    "modName": string;
+    "folderPath": string;
+    "relPath": string;
+    "displayPath": string;
+    "absolutePath": string;
+    "content": string;
+    "profileName": string;
+    "profileSpecificConfigs": boolean;
 }
 
 export interface ModDependency {
@@ -133,6 +180,26 @@ export interface ModGroup {
     "key": string;
     "label": string;
     "mods": Mod[] | null;
+}
+
+/**
+ * ModJsonFileNode is a folder or JSON file in a mod's config tree.
+ */
+export interface ModJsonFileNode {
+    "name": string;
+    "relPath"?: string;
+    "isDir": boolean;
+    "children"?: ModJsonFileNode[] | null;
+}
+
+/**
+ * ModJsonSummary describes a mod that contains editable JSON files.
+ */
+export interface ModJsonSummary {
+    "modId": string;
+    "modName": string;
+    "folderPath": string;
+    "jsonFileCount": number;
 }
 
 /**

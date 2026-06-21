@@ -28,8 +28,11 @@
     modClearDisplayNameAria,
     modDisplayNameAria,
     modDisplayNameLabel,
+    modContainsOverwritesLabel,
+    modContainsOverwritesTooltip,
     modOfficialNameLabel,
     modRenameLabel,
+    configEditorEditConfig,
   } from "$lib/copy";
   import { nexusModPageUrl, nexusSearchUrl } from "$lib/mods/dependencies";
   import { openExternalUrl } from "$lib/wails/openExternalUrl";
@@ -45,6 +48,7 @@
     onenabledependency?: (modId: string) => void | Promise<void>;
     onselectmod?: (modId: string) => void;
     onsetcustomname?: (modId: string, name: string) => void | Promise<void>;
+    oneditconfig?: (mod: Mod) => void | Promise<void>;
   }
 
   let {
@@ -56,6 +60,7 @@
     onenabledependency,
     onselectmod,
     onsetcustomname,
+    oneditconfig,
   }: Props = $props();
 
   const mod = $derived.by(() => {
@@ -507,8 +512,16 @@
                   </div>
                   <div class="field-row">
                     <dt>Update</dt>
-                    <dd>
+                    <dd class="detail-status-badges">
                       <span class={modStatus.badge}>{modStatus.text}</span>
+                      {#if mod.containsOverwrites}
+                        <span
+                          class="state-badge state-badge--patch"
+                          title={modContainsOverwritesTooltip()}
+                        >
+                          {modContainsOverwritesLabel()}
+                        </span>
+                      {/if}
                     </dd>
                   </div>
                   {#if dependencyIssueCount > 0}
@@ -542,6 +555,29 @@
                   <div class="field-row">
                     <dt>Core mod</dt>
                     <dd>{mod.isCoreMod ? "Yes" : "No"}</dd>
+                  </div>
+                  <div class="field-row">
+                    <dt>JSON files</dt>
+                    <dd class="detail-config-cell">
+                      {#if mod.hasJsonFiles}
+                        <span class="state-badge state-badge--success">
+                          {mod.jsonFileCount === 1
+                            ? "1 file"
+                            : `${mod.jsonFileCount} files`}
+                        </span>
+                        {#if oneditconfig}
+                          <button
+                            type="button"
+                            class="btn btn-sm preset-tonal"
+                            onclick={() => void oneditconfig(mod)}
+                          >
+                            {configEditorEditConfig}
+                          </button>
+                        {/if}
+                      {:else}
+                        <span class="state-badge state-badge--muted">None</span>
+                      {/if}
+                    </dd>
                   </div>
                   <div class="field-row">
                     <dt>Has config</dt>
@@ -907,6 +943,20 @@
   .field-row dd {
     color: var(--color-surface-300);
     min-width: 0;
+  }
+
+  .detail-status-badges {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .detail-config-cell {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
   }
 
   .copy-btn {

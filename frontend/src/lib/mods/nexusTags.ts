@@ -1,5 +1,8 @@
 import { DEFAULT_TAG_IDS } from "$lib/mods/defaultTags";
 
+/** Mirror of internal/mods/fashion_sense.go */
+export const FASHION_SENSE_FRAMEWORK_UID = "PeacefulEnd.FashionSense";
+
 /** Mirror of internal/categories/nexus_map.go */
 const NEXUS_CATEGORY_TO_TAG: Record<string, string> = {
   "user interface": DEFAULT_TAG_IDS.ui,
@@ -48,6 +51,7 @@ const MOCK_NEXUS_MOD_CATEGORIES: Record<number, string> = {
   7332: "Maps",
   6254: "Fishing",
   10212: "Items",
+  10295: "Clothing",
   7742: "Characters",
   3753: "Expansions",
   3109: "Modding Tools",
@@ -55,6 +59,9 @@ const MOCK_NEXUS_MOD_CATEGORIES: Record<number, string> = {
   1720: "Modding Tools",
   1348: "Modding Tools",
 };
+
+/** Mock Nexus mod IDs that are Fashion Sense content packs. */
+const MOCK_NEXUS_FS_MOD_IDS = new Set([10295]);
 
 export function parseNxmModId(raw: string): number | null {
   const url = raw.trim();
@@ -80,19 +87,69 @@ export function tagIdForNexusCategory(name: string): string {
   return NEXUS_CATEGORY_TO_TAG[key] ?? "";
 }
 
+/** Mirror of internal/categories/install_tags.go */
+export function mergeInstallSuggestedTags(
+  nexusTagIds: string[],
+  fashionSense: boolean,
+  existingCategoryIds: Set<string>,
+): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const tagId of nexusTagIds) {
+    if (!tagId || seen.has(tagId) || !existingCategoryIds.has(tagId)) continue;
+    if (fashionSense && tagId === DEFAULT_TAG_IDS.items) continue;
+    seen.add(tagId);
+    out.push(tagId);
+  }
+  if (
+    fashionSense &&
+    existingCategoryIds.has(DEFAULT_TAG_IDS.fashionSense) &&
+    !seen.has(DEFAULT_TAG_IDS.fashionSense)
+  ) {
+    out.push(DEFAULT_TAG_IDS.fashionSense);
+  }
+  return out;
+}
+
 export function suggestedTagIdsForNexusMods(
   modIds: number[],
   existingCategoryIds: Set<string>,
+  archivePaths: string[] = [],
 ): string[] {
+  const hasArchives = archivePaths.some((p) => p.trim().length > 0);
   const out: string[] = [];
   const seen = new Set<string>();
   for (const modId of modIds) {
     const categoryName = MOCK_NEXUS_MOD_CATEGORIES[modId];
     if (!categoryName) continue;
+    if (!hasArchives && categoryName.toLowerCase() === "clothing") continue;
     const tagId = tagIdForNexusCategory(categoryName);
     if (!tagId || seen.has(tagId) || !existingCategoryIds.has(tagId)) continue;
     seen.add(tagId);
     out.push(tagId);
   }
   return out;
+}
+
+export function suggestedTagIdsForInstall(
+  archivePaths: string[],
+  modIds: number[],
+  existingCategoryIds: Set<string>,
+): string[] {
+  const fashionSenseFromMods = modIds.some((id) =>
+    MOCK_NEXUS_FS_MOD_IDS.has(id),
+  );
+  const fashionSenseFromArchives = archivePaths.some((path) =>
+    /fashion[\s_-]?sense|fs[_-]?pack/i.test(path),
+  );
+  const nexusTags = suggestedTagIdsForNexusMods(
+    modIds,
+    existingCategoryIds,
+    archivePaths,
+  );
+  return mergeInstallSuggestedTags(
+    nexusTags,
+    fashionSenseFromMods || fashionSenseFromArchives,
+    existingCategoryIds,
+  );
 }

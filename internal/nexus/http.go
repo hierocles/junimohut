@@ -2,14 +2,15 @@ package nexus
 
 import (
 	"net/http"
-	"time"
+
+	"junimohut/internal/httpclient"
 )
 
 const userAgent = "JunimoHut/0.1 (compatible; Nexus Mod Manager)"
 
 var (
-	apiHTTPClient      = &http.Client{Timeout: 60 * time.Second}
-	downloadHTTPClient = &http.Client{Timeout: 30 * time.Minute}
+	apiHTTPClient      = httpclient.Default()
+	downloadHTTPClient = httpclient.Download()
 )
 
 func setUserAgent(req *http.Request) {

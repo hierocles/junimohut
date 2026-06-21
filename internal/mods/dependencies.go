@@ -1,6 +1,7 @@
 package mods
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +11,8 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 )
+
+var errOverwritePatchArchive = errors.New("overwrite patch archive")
 
 const (
 	DependencyMissing       = "missing"
@@ -57,7 +60,7 @@ func mergeLibraryWithPendingManifests(library []Mod, pending []Manifest) []Mod {
 		if manifest.UniqueID == "" {
 			continue
 		}
-		if _, ok := byUID[manifest.UniqueID]; ok {
+		if _, ok := byUID[CanonicalUniqueID(manifest.UniqueID)]; ok {
 			continue
 		}
 		library = append(library, Mod{
@@ -72,15 +75,22 @@ func mergeLibraryWithPendingManifests(library []Mod, pending []Manifest) []Mod {
 func modIndexByUniqueID(mods []Mod) map[string]Mod {
 	byUniqueID := make(map[string]Mod, len(mods))
 	for _, m := range mods {
-		uid := m.Manifest.UniqueID
-		if uid == "" {
-			continue
-		}
-		if _, ok := byUniqueID[uid]; !ok {
-			byUniqueID[uid] = m
+		registerModInUniqueIDIndex(byUniqueID, m.Manifest.UniqueID, m)
+		for _, uid := range m.PackSiblingUIDs {
+			registerModInUniqueIDIndex(byUniqueID, uid, m)
 		}
 	}
 	return byUniqueID
+}
+
+func registerModInUniqueIDIndex(byUniqueID map[string]Mod, uid string, m Mod) {
+	if uid == "" {
+		return
+	}
+	key := CanonicalUniqueID(uid)
+	if _, ok := byUniqueID[key]; !ok {
+		byUniqueID[key] = m
+	}
 }
 
 func resolveModDependencies(mod Mod, byUniqueID map[string]Mod) []DependencyIssue {
@@ -92,11 +102,11 @@ func resolveModDependencies(mod Mod, byUniqueID map[string]Mod) []DependencyIssu
 	selfID := mod.Manifest.UniqueID
 	issues := make([]DependencyIssue, 0, len(entries))
 	for _, entry := range entries {
-		if entry.UniqueID == "" || entry.UniqueID == selfID {
+		if entry.UniqueID == "" || UniqueIDsEqual(entry.UniqueID, selfID) {
 			continue
 		}
 
-		provider, ok := byUniqueID[entry.UniqueID]
+		provider, ok := byUniqueID[CanonicalUniqueID(entry.UniqueID)]
 		if !ok {
 			if entry.IsRequired {
 				issues = append(issues, newDependencyIssue(entry, DependencyMissing, nil))
@@ -148,7 +158,8 @@ func collectDependencyEntries(mod Mod) []depEntry {
 	seen := map[string]depEntry{}
 
 	if cp := mod.Manifest.ContentPackFor; cp != nil && cp.UniqueID != "" {
-		seen[cp.UniqueID] = depEntry{
+		key := CanonicalUniqueID(cp.UniqueID)
+		seen[key] = depEntry{
 			UniqueID:       cp.UniqueID,
 			MinimumVersion: cp.MinimumVersion,
 			IsRequired:     true,
@@ -161,9 +172,10 @@ func collectDependencyEntries(mod Mod) []depEntry {
 			continue
 		}
 		required := dep.IsRequired == nil || bool(*dep.IsRequired)
-		existing, ok := seen[dep.UniqueID]
+		key := CanonicalUniqueID(dep.UniqueID)
+		existing, ok := seen[key]
 		if !ok {
-			seen[dep.UniqueID] = depEntry{
+			seen[key] = depEntry{
 				UniqueID:       dep.UniqueID,
 				MinimumVersion: dep.MinimumVersion,
 				IsRequired:     required,
@@ -176,7 +188,7 @@ func collectDependencyEntries(mod Mod) []depEntry {
 		if existing.MinimumVersion == "" && dep.MinimumVersion != "" {
 			existing.MinimumVersion = dep.MinimumVersion
 		}
-		seen[dep.UniqueID] = existing
+		seen[key] = existing
 	}
 
 	out := make([]depEntry, 0, len(seen))
@@ -217,6 +229,9 @@ func PreviewInstallDependencies(archivePaths []string, library []Mod) ([]Install
 	for _, archivePath := range archivePaths {
 		manifests, err := extractManifestsFromArchive(archivePath)
 		if err != nil {
+			if err == errOverwritePatchArchive {
+				continue
+			}
 			return nil, fmt.Errorf("%s: %w", filepath.Base(archivePath), err)
 		}
 		batches = append(batches, archiveBatch{path: archivePath, manifests: manifests})
@@ -252,6 +267,14 @@ func extractManifestsFromArchive(archivePath string) ([]Manifest, error) {
 
 	if err := archive.Extract(archivePath, tmpDir); err != nil {
 		return nil, fmt.Errorf("extract archive: %w", err)
+	}
+
+	looksLikePatch, err := ArchiveLooksLikeOverwritePatch(tmpDir)
+	if err != nil {
+		return nil, err
+	}
+	if looksLikePatch {
+		return nil, errOverwritePatchArchive
 	}
 
 	paths, err := findAllManifests(tmpDir)

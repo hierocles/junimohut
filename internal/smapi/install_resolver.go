@@ -6,81 +6,75 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
+
+	"junimohut/internal/httpclient"
 )
 
 var (
-	smapiVersionAPIURL        = "https://smapi.io/api/version?game=stardewvalley&platform=windows"
 	githubLatestReleaseAPIURL = "https://api.github.com/repos/Pathoschild/SMAPI/releases/latest"
 	fallbackInstallURL        = "https://github.com/Pathoschild/SMAPI/releases/latest/download/SMAPI-4.3.6-installer.zip"
 )
 
-var smapiHTTPClient = &http.Client{Timeout: 30 * time.Second}
+var smapiHTTPClient = httpclient.Default()
 
-func fetchSMAPIIOInstallURL() (string, error) {
-	resp, err := smapiHTTPClient.Get(smapiVersionAPIURL)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		return "", fmt.Errorf("smapi.io version API returned HTTP %d", resp.StatusCode)
-	}
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-	var data struct {
-		DownloadURL string `json:"downloadUrl"`
-	}
-	if err := json.Unmarshal(body, &data); err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(data.DownloadURL), nil
+type githubRelease struct {
+	TagName string `json:"tag_name"`
+	Assets  []struct {
+		Name               string `json:"name"`
+		BrowserDownloadURL string `json:"browser_download_url"`
+	} `json:"assets"`
 }
 
-func fetchGitHubInstallURL() (string, error) {
+func fetchGitHubRelease() (githubRelease, error) {
 	req, err := http.NewRequest(http.MethodGet, githubLatestReleaseAPIURL, nil)
 	if err != nil {
-		return "", err
+		return githubRelease{}, err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", "JunimoHut")
+	req.Header.Set("User-Agent", appName)
 
-	resp, err := smapiHTTPClient.Do(req)
+	resp, err := httpclient.DoWithRetry(smapiHTTPClient, req, 3)
 	if err != nil {
-		return "", err
+		return githubRelease{}, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
-		return "", fmt.Errorf("GitHub releases API returned HTTP %d", resp.StatusCode)
+		return githubRelease{}, fmt.Errorf("GitHub releases API returned HTTP %d", resp.StatusCode)
 	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", err
+		return githubRelease{}, err
 	}
-	var release struct {
-		Assets []struct {
-			Name               string `json:"name"`
-			BrowserDownloadURL string `json:"browser_download_url"`
-		} `json:"assets"`
-	}
+	var release githubRelease
 	if err := json.Unmarshal(body, &release); err != nil {
-		return "", err
+		return githubRelease{}, err
 	}
+	return release, nil
+}
+
+func installerURLFromRelease(release githubRelease) string {
 	for _, asset := range release.Assets {
 		name := strings.ToLower(asset.Name)
 		if strings.Contains(name, "installer") && strings.HasSuffix(name, ".zip") {
-			return strings.TrimSpace(asset.BrowserDownloadURL), nil
+			return strings.TrimSpace(asset.BrowserDownloadURL)
 		}
 	}
-	return "", fmt.Errorf("no SMAPI installer asset found in latest GitHub release")
+	return ""
+}
+
+func fetchGitHubInstallURL() (string, error) {
+	release, err := fetchGitHubRelease()
+	if err != nil {
+		return "", err
+	}
+	url := installerURLFromRelease(release)
+	if url == "" {
+		return "", fmt.Errorf("no SMAPI installer asset found in latest GitHub release")
+	}
+	return url, nil
 }
 
 func resolveInstallDownloadURL() string {
-	if url, err := fetchSMAPIIOInstallURL(); err == nil && url != "" {
-		return url
-	}
 	if url, err := fetchGitHubInstallURL(); err == nil && url != "" {
 		return url
 	}

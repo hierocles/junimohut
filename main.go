@@ -19,6 +19,8 @@ func init() {
 	application.RegisterEvent[bool]("mods-changed")
 	application.RegisterEvent[string]("nxm-url")
 	application.RegisterEvent[string]("nexus-download-ready")
+	application.RegisterEvent[string]("config-editor-open-mod")
+	application.RegisterEvent[bool]("config-editor-reload")
 }
 
 func main() {

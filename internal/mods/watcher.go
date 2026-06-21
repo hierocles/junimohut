@@ -2,9 +2,12 @@ package mods
 
 import (
 	"sync"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 )
+
+const watcherDebounce = 400 * time.Millisecond
 
 // Watcher notifies when the mods folder changes.
 type Watcher struct {
@@ -12,6 +15,9 @@ type Watcher struct {
 	watcher  *fsnotify.Watcher
 	modsRoot string
 	onChange func()
+
+	debounceMu sync.Mutex
+	debounceCh chan struct{}
 }
 
 func NewWatcher(modsRoot string, onChange func()) (*Watcher, error) {
@@ -35,9 +41,7 @@ func (w *Watcher) loop() {
 				return
 			}
 			if event.Has(fsnotify.Create) || event.Has(fsnotify.Write) || event.Has(fsnotify.Remove) || event.Has(fsnotify.Rename) {
-				if w.onChange != nil {
-					w.onChange()
-				}
+				w.scheduleOnChange()
 			}
 		case _, ok := <-w.watcher.Errors:
 			if !ok {
@@ -45,6 +49,27 @@ func (w *Watcher) loop() {
 			}
 		}
 	}
+}
+
+func (w *Watcher) scheduleOnChange() {
+	if w.onChange == nil {
+		return
+	}
+	w.debounceMu.Lock()
+	defer w.debounceMu.Unlock()
+	if w.debounceCh != nil {
+		return
+	}
+	w.debounceCh = make(chan struct{})
+	go func(ch chan struct{}) {
+		time.Sleep(watcherDebounce)
+		w.debounceMu.Lock()
+		if w.debounceCh == ch {
+			w.debounceCh = nil
+		}
+		w.debounceMu.Unlock()
+		w.onChange()
+	}(w.debounceCh)
 }
 
 func (w *Watcher) Close() error {

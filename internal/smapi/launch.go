@@ -4,17 +4,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
-	"time"
 
 	"github.com/Masterminds/semver/v3"
 	"junimohut/internal/config"
+	"junimohut/internal/httpclient"
 )
 
 // Launcher starts SMAPI with the game's Mods folder (symlinked enabled mods).
@@ -81,34 +79,27 @@ type UpdateInfo struct {
 	DownloadURL     string `json:"downloadUrl"`
 }
 
-// CheckSMAPIUpdate queries smapi.io for latest version.
+// CheckSMAPIUpdate compares the installed SMAPI version against the latest GitHub release.
 func CheckSMAPIUpdate(currentVersion string) (UpdateInfo, error) {
 	info := UpdateInfo{CurrentVersion: currentVersion}
-	resp, err := smapiHTTPClient.Get(smapiVersionAPIURL)
+	release, err := fetchGitHubRelease()
 	if err != nil {
+		if httpclient.IsTransient(err) {
+			return info, nil
+		}
 		return info, err
 	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-	var data struct {
-		Version     string `json:"version"`
-		DownloadURL string `json:"downloadUrl"`
+	latest := strings.TrimPrefix(strings.TrimSpace(release.TagName), "v")
+	info.LatestVersion = latest
+	info.DownloadURL = installerURLFromRelease(release)
+	if info.DownloadURL == "" {
+		info.DownloadURL = resolveInstallDownloadURL()
 	}
-	if json.Unmarshal(body, &data) != nil {
-		// fallback: try alternate format
-		var alt struct {
-			Stable string `json:"stable"`
-		}
-		_ = json.Unmarshal(body, &alt)
-		data.Version = alt.Stable
-	}
-	info.LatestVersion = data.Version
-	info.DownloadURL = data.DownloadURL
-	if currentVersion != "" && data.Version != "" {
+	if currentVersion != "" && latest != "" && !strings.EqualFold(currentVersion, "unknown") {
 		cur, err1 := semver.NewVersion(strings.TrimPrefix(currentVersion, "v"))
-		latest, err2 := semver.NewVersion(strings.TrimPrefix(data.Version, "v"))
+		latestVer, err2 := semver.NewVersion(latest)
 		if err1 == nil && err2 == nil {
-			info.UpdateAvailable = latest.GreaterThan(cur)
+			info.UpdateAvailable = latestVer.GreaterThan(cur)
 		}
 	}
 	return info, nil
@@ -124,30 +115,12 @@ type ModUpdateResult struct {
 	Message        string `json:"message"`
 }
 
-// CheckModUpdates queries SMAPI's mod update service.
-func CheckModUpdates(mods []ModUpdateRequest) ([]ModUpdateResult, error) {
+// CheckModUpdates queries SMAPI's mod update service via POST /api/v{version}/mods.
+func CheckModUpdates(mods []ModUpdateRequest, smapiVersion string) ([]ModUpdateResult, error) {
 	if len(mods) == 0 {
 		return nil, nil
 	}
-	params := url.Values{}
-	for _, m := range mods {
-		params.Add("mods", fmt.Sprintf("%s@%s", m.UniqueID, m.Version))
-		for _, k := range m.UpdateKeys {
-			params.Add("keys", k)
-		}
-	}
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Get("https://smapi.io/api/mods/updates?" + params.Encode())
-	if err != nil {
-		return checkModUpdatesFallback(mods)
-	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-	var results []ModUpdateResult
-	if json.Unmarshal(body, &results) != nil {
-		return checkModUpdatesFallback(mods)
-	}
-	return results, nil
+	return postModUpdates(mods, smapiVersion)
 }
 
 type ModUpdateRequest struct {

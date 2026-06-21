@@ -1,7 +1,12 @@
 <script lang="ts">
-  import type { Category, InstallResult, InstallOptions, Mod } from '$lib/api/client';
-  import { USE_MOCK_DATA } from '$lib/api/client';
-  import * as API from '$lib/api/index';
+  import type {
+    Category,
+    InstallResult,
+    InstallOptions,
+    Mod,
+  } from "$lib/api/client";
+  import { USE_MOCK_DATA } from "$lib/api/client";
+  import * as API from "$lib/api/index";
   import {
     pathBasename,
     normalizeArchivePaths,
@@ -18,8 +23,16 @@
     dependencyNotInstalled,
     dependencyVersionTooLow,
     dependencyDisabled,
-  } from '$lib/copy';
-  import type { InstallDependencyPreview } from '$lib/mods/dependencies';
+    installOverwriteWarningTitle,
+    installOverwriteWarningBody,
+    installOverwriteConfirmLabel,
+    installOverwriteTargetLegend,
+    installOverwriteTargetHint,
+    installOverwriteMatchSummary,
+    installOverwriteSamplePathsLabel,
+  } from "$lib/copy";
+  import type { InstallDependencyPreview } from "$lib/mods/dependencies";
+  import type { InstallOverwritePreview } from "../../../bindings/junimohut/internal/mods/models.js";
 
   export type InstallNamePreview = {
     archivePath: string;
@@ -36,12 +49,17 @@
     open: boolean;
     paths?: string[];
     updateTarget?: Mod | null;
+    manualQueue?: boolean;
     alwaysAskDeleteOnUpdate?: boolean;
     categories: Category[];
     modsRoot: string;
     suggestedTagIds?: string[];
     onclose: () => void;
-    oninstall: (paths: string[], tagIds: string[], options: InstallOptions) => Promise<InstallResult[]>;
+    oninstall: (
+      paths: string[],
+      tagIds: string[],
+      options: InstallOptions,
+    ) => Promise<InstallResult[]>;
     onpreview?: (paths: string[]) => Promise<InstallDependencyPreview[]>;
   }
 
@@ -49,6 +67,7 @@
     open,
     paths = $bindable([]),
     updateTarget = null,
+    manualQueue = true,
     alwaysAskDeleteOnUpdate = false,
     categories,
     modsRoot,
@@ -70,24 +89,38 @@
   let closing = $state(false);
   let selectedTagIds = $state(new Set<string>());
   let tagsTouched = $state(false);
-  let installMode = $state<'replace' | 'install'>('install');
+  let installMode = $state<"replace" | "install">("install");
   let deleteOldFiles = $state(false);
-  let nameDisplayMode = $state<'official' | 'folder'>('official');
+  let nameDisplayMode = $state<"official" | "folder">("official");
   let namePreviewBusy = $state(false);
   let namePreviews = $state<InstallNamePreview[]>([]);
   let installedUseFolderNames = $state(false);
+  let overwritePreviewBusy = $state(false);
+  let overwritePreviews = $state<InstallOverwritePreview[]>([]);
+  let overwriteConfirmOpen = $state(false);
+  let overwriteTargets = $state<Record<string, string>>({});
 
   const isUpdateFlow = $derived(updateTarget != null);
   const installActionLabel = $derived(
-    isUpdateFlow && installMode === 'replace' ? 'Update mod' : 'Install',
+    isUpdateFlow && installMode === "replace" ? "Update mod" : "Install",
   );
 
   const sortedCategories = $derived(
-    [...categories].sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name)),
+    [...categories].sort(
+      (a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name),
+    ),
   );
 
   const showResults = $derived(results != null);
-  const canInstall = $derived(paths.length > 0 && !installing);
+  const hasBlockedOverwrite = $derived(
+    overwritePreviews.some((preview) => preview.state === "blocked"),
+  );
+  const confirmOverwritePreviews = $derived(
+    overwritePreviews.filter((preview) => preview.state === "confirm"),
+  );
+  const canInstall = $derived(
+    paths.length > 0 && !installing && !hasBlockedOverwrite,
+  );
 
   const resultSummary = $derived.by(() => {
     if (!results) return { ok: 0, fail: 0 };
@@ -119,8 +152,10 @@
     namePreviews.some((preview) => preview.needsDisplayNameChoice),
   );
 
-  function previewDisplayName(mod: (typeof flatNamePreviewMods)[number]): string {
-    if (hasNameDisplayChoice && nameDisplayMode === 'folder') {
+  function previewDisplayName(
+    mod: (typeof flatNamePreviewMods)[number],
+  ): string {
+    if (hasNameDisplayChoice && nameDisplayMode === "folder") {
       return mod.folderLabel;
     }
     return mod.officialName;
@@ -136,14 +171,114 @@
         (!!result.modId && !!m.uniqueID && result.modId.includes(m.uniqueID)),
     );
     if (preview) {
-      return installedUseFolderNames ? preview.folderLabel : preview.officialName;
+      return installedUseFolderNames
+        ? preview.folderLabel
+        : preview.officialName;
     }
-    return pathBasename(result.folderPath) || 'Archive';
+    return pathBasename(result.folderPath) || "Archive";
   }
 
   function applySuggestedTags() {
     if (tagsTouched || appliedSuggestedTagIds.length === 0) return;
     selectedTagIds = new Set(appliedSuggestedTagIds);
+  }
+
+  function defaultOverwriteTarget(preview: InstallOverwritePreview): string {
+    return (
+      preview.suggestedTarget?.trim() ||
+      preview.candidates?.[0]?.folderPath?.trim() ||
+      ""
+    );
+  }
+
+  function syncOverwriteTargets(previews: InstallOverwritePreview[]) {
+    const next: Record<string, string> = { ...overwriteTargets };
+    for (const preview of previews) {
+      if (preview.state !== "confirm") continue;
+      const current = next[preview.archivePath];
+      const candidates = preview.candidates ?? [];
+      const stillValid = candidates.some(
+        (candidate) => candidate.folderPath === current,
+      );
+      if (!current || !stillValid) {
+        next[preview.archivePath] = defaultOverwriteTarget(preview);
+      }
+    }
+    for (const path of Object.keys(next)) {
+      if (!previews.some((preview) => preview.archivePath === path)) {
+        delete next[path];
+      }
+    }
+    overwriteTargets = next;
+  }
+
+  function buildOverwriteTargetsForInstall(): Record<string, string> {
+    const targets: Record<string, string> = {};
+    for (const preview of confirmOverwritePreviews) {
+      const target =
+        overwriteTargets[preview.archivePath]?.trim() ||
+        defaultOverwriteTarget(preview);
+      if (target) {
+        targets[preview.archivePath] = target;
+      }
+    }
+    return targets;
+  }
+
+  async function refreshOverwritePreview() {
+    if (paths.length === 0 || isUpdateFlow) {
+      overwritePreviews = [];
+      overwriteTargets = {};
+      return;
+    }
+    overwritePreviewBusy = true;
+    try {
+      if (USE_MOCK_DATA) {
+        overwritePreviews = [];
+      } else {
+        overwritePreviews =
+          (await API.PreviewInstallOverwrites([...paths])) ?? [];
+      }
+      syncOverwriteTargets(overwritePreviews);
+    } catch {
+      overwritePreviews = [];
+      overwriteTargets = {};
+    } finally {
+      overwritePreviewBusy = false;
+    }
+  }
+
+  async function proceedToDependencyCheckAndInstall() {
+    if (onpreview) {
+      previewBusy = true;
+      try {
+        const previews = (await onpreview([...paths])) ?? [];
+        const withIssues = previews.filter((p) => (p.issues?.length ?? 0) > 0);
+        if (withIssues.length > 0) {
+          dependencyPreviews = withIssues;
+          dependencyConfirmOpen = true;
+          return;
+        }
+      } catch {
+        /* proceed without blocking install */
+      } finally {
+        previewBusy = false;
+      }
+    }
+    await runInstallConfirmed();
+  }
+
+  function cancelOverwriteConfirm() {
+    overwriteConfirmOpen = false;
+  }
+
+  async function confirmOverwriteInstall() {
+    overwriteConfirmOpen = false;
+    await proceedToDependencyCheckAndInstall();
+  }
+
+  function setOverwriteTarget(archivePath: string, folderPath: string) {
+    overwriteTargets = { ...overwriteTargets, [archivePath]: folderPath };
   }
 
   function requestClose() {
@@ -198,7 +333,7 @@
   function onBrowsePick(e: Event) {
     const input = e.currentTarget as HTMLInputElement;
     addPaths(pathsFromFileList(input.files ?? []));
-    input.value = '';
+    input.value = "";
   }
 
   async function browseArchives() {
@@ -232,18 +367,24 @@
       const options: InstallOptions = isUpdateFlow
         ? {
             mode: installMode,
-            deleteOld: installMode === 'replace' ? deleteOldFiles : undefined,
-            useFolderDisplayNames: hasNameDisplayChoice && nameDisplayMode === 'folder',
+            deleteOld: installMode === "replace" ? deleteOldFiles : undefined,
+            useFolderDisplayNames:
+              hasNameDisplayChoice && nameDisplayMode === "folder",
           }
         : {
-            mode: 'install',
-            useFolderDisplayNames: hasNameDisplayChoice && nameDisplayMode === 'folder',
+            mode: "install",
+            useFolderDisplayNames:
+              hasNameDisplayChoice && nameDisplayMode === "folder",
+            overwriteTargets: buildOverwriteTargetsForInstall(),
           };
       installedUseFolderNames = options.useFolderDisplayNames ?? false;
       results = await oninstall(batch, [...selectedTagIds], options);
       paths = [];
       dependencyConfirmOpen = false;
       dependencyPreviews = [];
+      overwriteConfirmOpen = false;
+      overwritePreviews = [];
+      overwriteTargets = {};
     } catch {
       results = null;
     } finally {
@@ -252,30 +393,19 @@
   }
 
   function dependencyIssueLabel(state: string): string {
-    if (state === 'version_too_low') return dependencyVersionTooLow();
-    if (state === 'disabled') return dependencyDisabled();
+    if (state === "version_too_low") return dependencyVersionTooLow();
+    if (state === "disabled") return dependencyDisabled();
     return dependencyNotInstalled();
   }
 
   async function handleInstall() {
-    if (!canInstall || installing || previewBusy) return;
-    if (onpreview) {
-      previewBusy = true;
-      try {
-        const previews = (await onpreview([...paths])) ?? [];
-        const withIssues = previews.filter((p) => (p.issues?.length ?? 0) > 0);
-        if (withIssues.length > 0) {
-          dependencyPreviews = withIssues;
-          dependencyConfirmOpen = true;
-          return;
-        }
-      } catch {
-        /* proceed without blocking install */
-      } finally {
-        previewBusy = false;
-      }
+    if (!canInstall || installing || previewBusy || overwritePreviewBusy)
+      return;
+    if (confirmOverwritePreviews.length > 0 && !overwriteConfirmOpen) {
+      overwriteConfirmOpen = true;
+      return;
     }
-    await runInstallConfirmed();
+    await proceedToDependencyCheckAndInstall();
   }
 
   function cancelDependencyConfirm() {
@@ -291,7 +421,9 @@
     namePreviewBusy = true;
     try {
       if (USE_MOCK_DATA) {
-        const { getMockInstallNamePreview } = await import('$lib/mock/designData');
+        const { getMockInstallNamePreview } = await import(
+          "$lib/mock/designData"
+        );
         namePreviews = getMockInstallNamePreview([...paths]);
       } else {
         namePreviews = (await API.PreviewInstallNames([...paths])) ?? [];
@@ -305,6 +437,7 @@
 
   function installMore() {
     results = null;
+    if (!manualQueue) return;
     queueMicrotask(() => browseBtn?.focus());
   }
 
@@ -319,7 +452,7 @@
         if (!dialogEl || !open) return;
         if (!dialogEl.open) {
           dialogEl.showModal();
-          browseBtn?.focus();
+          if (manualQueue) browseBtn?.focus();
         }
       });
     } else if (el.open) {
@@ -334,17 +467,20 @@
       dragOver = false;
       selectedTagIds = new Set();
       tagsTouched = false;
-      installMode = 'install';
+      installMode = "install";
       deleteOldFiles = false;
-      nameDisplayMode = 'official';
+      nameDisplayMode = "official";
       namePreviews = [];
       dependencyConfirmOpen = false;
       dependencyPreviews = [];
+      overwriteConfirmOpen = false;
+      overwritePreviews = [];
+      overwriteTargets = {};
       return;
     }
     closing = false;
     if (updateTarget) {
-      installMode = 'replace';
+      installMode = "replace";
     }
     applySuggestedTags();
   });
@@ -353,6 +489,7 @@
     if (!open || isUpdateFlow) return;
     paths;
     void refreshNamePreview();
+    void refreshOverwritePreview();
   });
 
   $effect(() => {
@@ -371,19 +508,29 @@
   }}
   oncancel={onDialogCancel}
 >
-  <div class="install-panel card app-panel border app-border layout-stack motion-dialog-enter">
+  <div
+    class="install-panel card app-panel border app-border layout-stack motion-dialog-enter"
+  >
     <header class="install-header">
       <div class="min-w-0">
         <h2 id="install-title" class="type-title text-surface-50">
-          {isUpdateFlow ? 'Install update' : 'Install mods'}
+          {isUpdateFlow ? "Install update" : "Install mods"}
         </h2>
-        <p class="type-caption type-meta install-dest truncate" title={modsRoot}>
+        <p
+          class="type-caption type-meta install-dest truncate"
+          title={modsRoot}
+        >
           {#if isUpdateFlow && updateTarget}
-            Updating <span class="type-data">{updateTarget.manifest.Name}</span> in
-            <span class="type-data">{modsRoot || 'your mod library'}</span>
+            Updating <span class="type-data">{updateTarget.manifest.Name}</span>
+            in
+            <span class="type-data">{modsRoot || "your mod library"}</span>
           {:else}
-            Installs to <span class="type-data">{modsRoot || 'your mod library'}</span>
-            <span class="type-meta"> (enabled mods link into your game Mods folder)</span>
+            Installs to <span class="type-data"
+              >{modsRoot || "your mod library"}</span
+            >
+            <span class="type-meta">
+              (enabled mods link into your game Mods folder)</span
+            >
           {/if}
         </p>
       </div>
@@ -399,7 +546,11 @@
     </header>
 
     {#if showResults && results}
-      <div class="install-results layout-stack-sm" role="status" aria-live="polite">
+      <div
+        class="install-results layout-stack-sm"
+        role="status"
+        aria-live="polite"
+      >
         <p class="type-ui install-results-summary">
           {installCompleteLine(resultSummary.ok, resultSummary.fail)}
         </p>
@@ -410,14 +561,25 @@
               class:result-row--error={!!result.error}
               style:animation-delay="{Math.min(i, 8) * 40}ms"
             >
-              <span class="result-name type-ui truncate" title={resultDisplayName(result)}>
+              <span
+                class="result-name type-ui truncate"
+                title={resultDisplayName(result)}
+              >
                 {resultDisplayName(result)}
               </span>
               {#if result.error}
-                <span class="state-badge state-badge--error type-caption shrink-0">Failed</span>
-                <p class="result-error type-caption type-meta type-prose">{result.error}</p>
+                <span
+                  class="state-badge state-badge--error type-caption shrink-0"
+                  >Failed</span
+                >
+                <p class="result-error type-caption type-meta type-prose">
+                  {result.error}
+                </p>
               {:else}
-                <span class="state-badge state-badge--success type-caption shrink-0 delight-pop">Installed</span>
+                <span
+                  class="state-badge state-badge--success type-caption shrink-0 delight-pop"
+                  >Installed</span
+                >
               {/if}
             </li>
           {/each}
@@ -425,87 +587,130 @@
       </div>
 
       <footer class="install-actions">
-        <button type="button" class="btn preset-tonal flex-1" onclick={installMore}>Install more</button>
-        <button type="button" class="btn preset-filled-primary-500 flex-1" onclick={requestClose}>Done</button>
+        {#if manualQueue}
+          <button
+            type="button"
+            class="btn preset-tonal flex-1"
+            onclick={installMore}>Install more</button
+          >
+        {/if}
+        <button
+          type="button"
+          class="btn preset-filled-primary-500 flex-1"
+          onclick={requestClose}>Done</button
+        >
       </footer>
     {:else}
       {#if isUpdateFlow && updateTarget}
         <fieldset class="update-mode layout-stack-sm">
           <legend class="type-label">Update method</legend>
           <label class="update-mode-option">
-            <input type="radio" bind:group={installMode} value="replace" disabled={installing} />
+            <input
+              type="radio"
+              bind:group={installMode}
+              value="replace"
+              disabled={installing}
+            />
             <span class="type-ui">Replace existing mod folder</span>
           </label>
           <label class="update-mode-option">
-            <input type="radio" bind:group={installMode} value="install" disabled={installing} />
+            <input
+              type="radio"
+              bind:group={installMode}
+              value="install"
+              disabled={installing}
+            />
             <span class="type-ui">Install as new folder</span>
           </label>
-          {#if installMode === 'replace' && alwaysAskDeleteOnUpdate}
+          {#if installMode === "replace" && alwaysAskDeleteOnUpdate}
             <label class="flex items-center gap-2">
-              <input type="checkbox" bind:checked={deleteOldFiles} disabled={installing} />
-              <span class="type-caption type-meta">Delete old mod files before updating (keeps config.json)</span>
+              <input
+                type="checkbox"
+                bind:checked={deleteOldFiles}
+                disabled={installing}
+              />
+              <span class="type-caption type-meta"
+                >Delete old mod files before updating (keeps config.json)</span
+              >
             </label>
           {/if}
         </fieldset>
       {/if}
 
-      <div
-        class="install-dropzone"
-        class:install-dropzone--active={dragOver}
-        role="region"
-        aria-label="Drop mod archives here"
-        ondragover={(e) => {
-          e.preventDefault();
-          dragOver = true;
-        }}
-        ondragleave={() => (dragOver = false)}
-        ondrop={onDrop}
-      >
-        <p class="dropzone-title type-ui text-surface-100">Drop mod archives here</p>
-        <p class="type-caption type-meta">.zip, .7z, or .rar</p>
-        <button
-          bind:this={browseBtn}
-          type="button"
-          class="btn btn-sm preset-tonal"
-          disabled={installing}
-          onclick={browseArchives}
+      {#if manualQueue}
+        <div
+          class="install-dropzone"
+          class:install-dropzone--active={dragOver}
+          role="region"
+          aria-label="Drop mod archives here"
+          ondragover={(e) => {
+            e.preventDefault();
+            dragOver = true;
+          }}
+          ondragleave={() => (dragOver = false)}
+          ondrop={onDrop}
         >
-          Choose files…
-        </button>
-        <input
-          bind:this={fileInput}
-          type="file"
-          class="sr-only"
-          accept=".zip,.7z,.rar"
-          multiple
-          onchange={onBrowsePick}
-        />
-      </div>
+          <p class="dropzone-title type-ui text-surface-100">
+            Drop mod archives here
+          </p>
+          <p class="type-caption type-meta">.zip, .7z, or .rar</p>
+          <button
+            bind:this={browseBtn}
+            type="button"
+            class="btn btn-sm preset-tonal"
+            disabled={installing}
+            onclick={browseArchives}
+          >
+            Choose files…
+          </button>
+          <input
+            bind:this={fileInput}
+            type="file"
+            class="sr-only"
+            accept=".zip,.7z,.rar"
+            multiple
+            onchange={onBrowsePick}
+          />
+        </div>
+      {/if}
 
       {#if paths.length > 0}
         <div class="queue-header">
-          <span class="type-label">Ready to install</span>
-          <button type="button" class="anchor type-caption type-meta" disabled={installing} onclick={clearQueue}>
-            Clear all
-          </button>
+          <span class="type-label"
+            >{manualQueue ? "Ready to install" : "Downloaded mod"}</span
+          >
+          {#if manualQueue}
+            <button
+              type="button"
+              class="anchor type-caption type-meta"
+              disabled={installing}
+              onclick={clearQueue}
+            >
+              Clear all
+            </button>
+          {/if}
         </div>
         <ul class="file-queue" role="list">
           {#each paths as path (path)}
             <li class="file-row">
-              <span class="file-name type-ui truncate" title={path}>{pathBasename(path)}</span>
-              <button
-                type="button"
-                class="file-remove"
-                aria-label="Remove {pathBasename(path)}"
-                disabled={installing}
-                onclick={() => removePath(path)}
+              <span class="file-name type-ui truncate" title={path}
+                >{pathBasename(path)}</span
               >
-                ×
-              </button>
+              {#if manualQueue}
+                <button
+                  type="button"
+                  class="file-remove"
+                  aria-label="Remove {pathBasename(path)}"
+                  disabled={installing}
+                  onclick={() => removePath(path)}
+                >
+                  ×
+                </button>
+              {/if}
             </li>
           {/each}
         </ul>
-      {:else}
+      {:else if manualQueue}
         <p class="type-caption type-meta type-prose queue-empty">
           No files selected yet. Drop archives above or choose files from disk.
         </p>
@@ -514,7 +719,9 @@
       {#if !isUpdateFlow && paths.length > 0 && (namePreviewBusy || hasNameDisplayChoice)}
         <fieldset class="name-display-mode layout-stack-sm">
           <legend class="type-label">{installDisplayNameLegend}</legend>
-          <p class="type-caption type-meta type-prose name-display-hint">{installDisplayNameHint}</p>
+          <p class="type-caption type-meta type-prose name-display-hint">
+            {installDisplayNameHint}
+          </p>
           <label class="name-display-option">
             <input
               type="radio"
@@ -537,15 +744,23 @@
             <p class="type-caption type-meta">Checking mod names…</p>
           {:else if flatNamePreviewMods.length > 0}
             <div class="name-preview-list" aria-live="polite">
-              <span class="type-caption type-label">{installDisplayNamePreviewLabel}</span>
+              <span class="type-caption type-label"
+                >{installDisplayNamePreviewLabel}</span
+              >
               <ul class="name-preview-items" role="list">
                 {#each flatNamePreviewMods as mod (mod.uniqueID + mod.destFolder + mod.archivePath)}
                   <li class="name-preview-item">
-                    <span class="type-ui truncate" title={previewDisplayName(mod)}>
+                    <span
+                      class="type-ui truncate"
+                      title={previewDisplayName(mod)}
+                    >
                       {previewDisplayName(mod)}
                     </span>
                     {#if mod.officialName !== previewDisplayName(mod)}
-                      <span class="type-caption type-meta truncate" title={mod.officialName}>
+                      <span
+                        class="type-caption type-meta truncate"
+                        title={mod.officialName}
+                      >
                         manifest: {mod.officialName}
                       </span>
                     {/if}
@@ -555,6 +770,104 @@
             </div>
           {/if}
         </fieldset>
+      {/if}
+
+      {#if !isUpdateFlow && paths.length > 0 && (overwritePreviewBusy || overwritePreviews.length > 0)}
+        <div class="overwrite-preview layout-stack-sm">
+          {#if overwritePreviewBusy}
+            <p class="type-caption type-meta">Checking for file patches…</p>
+          {:else}
+            {#each overwritePreviews as preview (preview.archivePath)}
+              <fieldset class="overwrite-preview-item layout-stack-sm">
+                <legend class="type-label"
+                  >{installOverwriteWarningTitle()}</legend
+                >
+                <p class="type-caption type-meta type-prose">
+                  <span class="type-ui text-surface-200"
+                    >{pathBasename(preview.archivePath)}</span
+                  >
+                  — {installOverwriteWarningBody(preview.fileCount)}
+                </p>
+                {#if preview.state === "blocked"}
+                  <p
+                    class="type-caption type-meta type-prose overwrite-blocked"
+                  >
+                    {preview.blockReason}
+                  </p>
+                {:else if preview.candidates?.length}
+                  {@const selectedTarget =
+                    overwriteTargets[preview.archivePath] ||
+                    defaultOverwriteTarget(preview)}
+                  {@const selectedCandidate =
+                    preview.candidates.find(
+                      (item) => item.folderPath === selectedTarget,
+                    ) ?? preview.candidates[0]}
+                  <p class="type-caption type-meta type-prose">
+                    {installOverwriteTargetHint()}
+                  </p>
+                  <span class="type-caption type-label"
+                    >{installOverwriteTargetLegend()}</span
+                  >
+                  <ul class="overwrite-target-list" role="list">
+                    {#each preview.candidates as candidate (candidate.folderPath + candidate.uniqueID)}
+                      {@const selected =
+                        (overwriteTargets[preview.archivePath] ||
+                          defaultOverwriteTarget(preview)) ===
+                        candidate.folderPath}
+                      <li class="overwrite-target-item">
+                        <label class="overwrite-target-option">
+                          <input
+                            type="radio"
+                            name="overwrite-target-{preview.archivePath}"
+                            checked={selected}
+                            disabled={installing || overwritePreviewBusy}
+                            onchange={() =>
+                              setOverwriteTarget(
+                                preview.archivePath,
+                                candidate.folderPath,
+                              )}
+                          />
+                          <span class="overwrite-target-copy">
+                            <span class="type-ui">{candidate.modName}</span>
+                            <span
+                              class="type-caption type-meta truncate"
+                              title={candidate.folderPath}
+                            >
+                              {candidate.folderPath}
+                            </span>
+                            <span class="type-caption type-meta">
+                              {installOverwriteMatchSummary(
+                                candidate.matchedFiles,
+                                candidate.totalFiles,
+                              )}
+                            </span>
+                          </span>
+                        </label>
+                      </li>
+                    {/each}
+                  </ul>
+                  {#if selectedCandidate?.samplePaths?.length}
+                    <div class="overwrite-sample-paths">
+                      <span class="type-caption type-label"
+                        >{installOverwriteSamplePathsLabel()}</span
+                      >
+                      <ul class="overwrite-sample-list" role="list">
+                        {#each selectedCandidate.samplePaths as samplePath (samplePath)}
+                          <li
+                            class="type-caption type-meta type-mono truncate"
+                            title={samplePath}
+                          >
+                            {samplePath}
+                          </li>
+                        {/each}
+                      </ul>
+                    </div>
+                  {/if}
+                {/if}
+              </fieldset>
+            {/each}
+          {/if}
+        </div>
       {/if}
 
       <div class="tag-section layout-stack-sm">
@@ -580,11 +893,18 @@
             Optional — applied to every mod installed from this batch.
           </p>
           {#if showSuggestedTagHint}
-            <p class="type-caption type-meta type-prose tag-hint tag-hint--suggested">
+            <p
+              class="type-caption type-meta type-prose tag-hint tag-hint--suggested"
+            >
               {installSuggestedTagsHint(appliedSuggestedTagIds.length)}
             </p>
           {/if}
-          <ul class="tag-select-list" role="listbox" aria-label="Tags to apply" aria-multiselectable="true">
+          <ul
+            class="tag-select-list"
+            role="listbox"
+            aria-label="Tags to apply"
+            aria-multiselectable="true"
+          >
             {#each sortedCategories as cat (cat.id)}
               {@const selected = isTagSelected(cat.id)}
               <li>
@@ -592,16 +912,21 @@
                   type="button"
                   class="tag-select-item"
                   class:tag-select-item--on={selected}
-                  style:--chip-color={cat.color || '#6366f1'}
+                  style:--chip-color={cat.color || "#6366f1"}
                   role="option"
                   aria-selected={selected}
                   disabled={installing}
                   onclick={() => toggleTag(cat.id)}
                 >
                   <span class="tag-select-dot" aria-hidden="true"></span>
-                  <span class="tag-select-name type-ui truncate">{cat.name}</span>
+                  <span class="tag-select-name type-ui truncate"
+                    >{cat.name}</span
+                  >
                   {#if selected}
-                    <span class="tag-select-check type-caption" aria-hidden="true">✓</span>
+                    <span
+                      class="tag-select-check type-caption"
+                      aria-hidden="true">✓</span
+                    >
                   {/if}
                 </button>
               </li>
@@ -610,17 +935,74 @@
         {/if}
       </div>
 
-      <footer class="install-actions" class:install-actions--confirm={dependencyConfirmOpen}>
-        {#if dependencyConfirmOpen}
+      <footer
+        class="install-actions"
+        class:install-actions--confirm={dependencyConfirmOpen ||
+          overwriteConfirmOpen}
+      >
+        {#if overwriteConfirmOpen}
           <div class="dependency-confirm layout-stack-sm">
-            <p class="type-ui text-surface-100">{installDependencyWarningTitle()}</p>
+            <p class="type-ui text-surface-100">
+              {installOverwriteWarningTitle()}
+            </p>
+            <p class="type-caption type-meta type-prose">
+              {installOverwriteWarningBody(confirmOverwritePreviews.length)}
+            </p>
+            <ul class="dependency-warning-list" role="list">
+              {#each confirmOverwritePreviews as preview (preview.archivePath)}
+                {@const target =
+                  overwriteTargets[preview.archivePath] ||
+                  defaultOverwriteTarget(preview)}
+                {@const candidate = preview.candidates?.find(
+                  (item) => item.folderPath === target,
+                )}
+                <li class="dependency-warning-item">
+                  <span class="type-ui text-surface-200"
+                    >{pathBasename(preview.archivePath)}</span
+                  >
+                  <p class="type-caption type-meta type-prose">
+                    Merge {preview.fileCount} file{preview.fileCount === 1
+                      ? ""
+                      : "s"} into
+                    <span class="type-ui">{candidate?.modName ?? target}</span>
+                    {#if candidate?.folderPath}
+                      <span class="type-mono"> ({candidate.folderPath})</span>
+                    {/if}
+                  </p>
+                </li>
+              {/each}
+            </ul>
+          </div>
+          <button
+            type="button"
+            class="btn preset-tonal flex-1"
+            disabled={installing}
+            onclick={cancelOverwriteConfirm}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="btn preset-filled-primary-500 flex-1"
+            disabled={installing}
+            aria-busy={installing}
+            onclick={confirmOverwriteInstall}
+          >
+            {installing ? "Merging…" : installOverwriteConfirmLabel()}
+          </button>
+        {:else if dependencyConfirmOpen}
+          <div class="dependency-confirm layout-stack-sm">
+            <p class="type-ui text-surface-100">
+              {installDependencyWarningTitle()}
+            </p>
             <p class="type-caption type-meta type-prose">
               {installDependencyWarningBody(dependencyPreviews.length)}
             </p>
             <ul class="dependency-warning-list" role="list">
               {#each dependencyPreviews as preview (preview.uniqueID + preview.archivePath)}
                 <li class="dependency-warning-item">
-                  <span class="type-ui text-surface-200">{preview.modName}</span>
+                  <span class="type-ui text-surface-200">{preview.modName}</span
+                  >
                   <ul class="dependency-warning-sublist" role="list">
                     {#each preview.issues as issue (issue.uniqueID + issue.state)}
                       <li class="type-caption type-meta">
@@ -633,7 +1015,12 @@
               {/each}
             </ul>
           </div>
-          <button type="button" class="btn preset-tonal flex-1" disabled={installing} onclick={cancelDependencyConfirm}>
+          <button
+            type="button"
+            class="btn preset-tonal flex-1"
+            disabled={installing}
+            onclick={cancelDependencyConfirm}
+          >
             Cancel
           </button>
           <button
@@ -643,29 +1030,34 @@
             aria-busy={installing}
             onclick={runInstallConfirmed}
           >
-            {installing ? 'Installing…' : installAnywayLabel()}
+            {installing ? "Installing…" : installAnywayLabel()}
           </button>
         {:else}
-        <button type="button" class="btn preset-tonal flex-1" disabled={installing} onclick={requestClose}>
-          Cancel
-        </button>
-        <button
-          type="button"
-          class="btn preset-filled-primary-500 flex-1"
-          disabled={!canInstall || previewBusy}
-          aria-busy={installing || previewBusy}
-          onclick={handleInstall}
-        >
-          {installing
-            ? installMode === 'replace' && isUpdateFlow
-              ? 'Updating…'
-              : 'Installing…'
-            : previewBusy
-              ? 'Checking…'
-            : paths.length === 1
-              ? `${installActionLabel} 1 mod`
-              : `${installActionLabel} ${paths.length} mods`}
-        </button>
+          <button
+            type="button"
+            class="btn preset-tonal flex-1"
+            disabled={installing}
+            onclick={requestClose}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="btn preset-filled-primary-500 flex-1"
+            disabled={!canInstall || previewBusy || overwritePreviewBusy}
+            aria-busy={installing || previewBusy || overwritePreviewBusy}
+            onclick={handleInstall}
+          >
+            {installing
+              ? installMode === "replace" && isUpdateFlow
+                ? "Updating…"
+                : "Installing…"
+              : previewBusy || overwritePreviewBusy
+                ? "Checking…"
+                : paths.length === 1
+                  ? `${installActionLabel} 1 mod`
+                  : `${installActionLabel} ${paths.length} mods`}
+          </button>
         {/if}
       </footer>
     {/if}
@@ -694,7 +1086,8 @@
   }
 
   .install-dialog[open]::backdrop {
-    animation: motion-backdrop-enter var(--motion-medium) var(--ease-out-quart) both;
+    animation: motion-backdrop-enter var(--motion-medium) var(--ease-out-quart)
+      both;
   }
 
   .install-panel {
@@ -756,9 +1149,14 @@
     justify-content: center;
     gap: var(--space-2);
     padding: var(--space-8) var(--space-4);
-    border: 1px dashed color-mix(in oklab, var(--color-surface-600) 80%, transparent);
+    border: 1px dashed
+      color-mix(in oklab, var(--color-surface-600) 80%, transparent);
     border-radius: var(--radius-lg, 0.5rem);
-    background-color: color-mix(in oklab, var(--color-surface-900) 40%, var(--sdvm-panel));
+    background-color: color-mix(
+      in oklab,
+      var(--color-surface-900) 40%,
+      var(--sdvm-panel)
+    );
     text-align: center;
     transition:
       border-color 150ms cubic-bezier(0.25, 1, 0.5, 1),
@@ -767,7 +1165,11 @@
 
   .install-dropzone--active {
     border-color: var(--color-primary-500);
-    background-color: color-mix(in oklab, var(--color-primary-500) 10%, var(--sdvm-panel));
+    background-color: color-mix(
+      in oklab,
+      var(--color-primary-500) 10%,
+      var(--sdvm-panel)
+    );
   }
 
   .dropzone-title {
@@ -805,7 +1207,11 @@
     padding: var(--space-2) var(--space-3);
     border: 1px solid var(--sdvm-border);
     border-radius: var(--radius-base, 0.25rem);
-    background-color: color-mix(in oklab, var(--color-surface-900) 35%, var(--sdvm-panel));
+    background-color: color-mix(
+      in oklab,
+      var(--color-surface-900) 35%,
+      var(--sdvm-panel)
+    );
   }
 
   .file-name {
@@ -838,7 +1244,8 @@
   }
 
   .file-remove:focus-visible {
-    outline: 2px solid color-mix(in oklab, var(--color-error-500) 50%, transparent);
+    outline: 2px solid
+      color-mix(in oklab, var(--color-error-500) 50%, transparent);
     outline-offset: 1px;
   }
 
@@ -861,12 +1268,24 @@
     padding: var(--space-3);
     border: 1px solid var(--sdvm-border);
     border-radius: var(--radius-base, 0.25rem);
-    background-color: color-mix(in oklab, var(--color-surface-900) 30%, var(--sdvm-panel));
+    background-color: color-mix(
+      in oklab,
+      var(--color-surface-900) 30%,
+      var(--sdvm-panel)
+    );
   }
 
   .result-row--error {
-    border-color: color-mix(in oklab, var(--sdvm-error-border) 70%, var(--sdvm-border));
-    background-color: color-mix(in oklab, var(--sdvm-error-bg) 40%, var(--sdvm-panel));
+    border-color: color-mix(
+      in oklab,
+      var(--sdvm-error-border) 70%,
+      var(--sdvm-border)
+    );
+    background-color: color-mix(
+      in oklab,
+      var(--sdvm-error-bg) 40%,
+      var(--sdvm-panel)
+    );
   }
 
   .result-name {
@@ -894,9 +1313,71 @@
   .dependency-confirm {
     width: 100%;
     padding: var(--space-3);
-    border: 1px solid color-mix(in oklab, var(--color-error-500) 35%, var(--sdvm-border));
+    border: 1px solid
+      color-mix(in oklab, var(--color-error-500) 35%, var(--sdvm-border));
     border-radius: var(--radius-base, 0.25rem);
-    background: color-mix(in oklab, var(--sdvm-error-bg) 35%, var(--sdvm-panel));
+    background: color-mix(
+      in oklab,
+      var(--sdvm-error-bg) 35%,
+      var(--sdvm-panel)
+    );
+  }
+
+  .overwrite-preview-item {
+    margin: 0;
+    padding: var(--space-3);
+    border: 1px solid
+      color-mix(in oklab, var(--color-primary-500) 25%, var(--sdvm-border));
+    border-radius: var(--radius-base, 0.25rem);
+    background: color-mix(
+      in oklab,
+      var(--color-primary-500) 6%,
+      var(--sdvm-panel)
+    );
+  }
+
+  .overwrite-blocked {
+    margin: 0;
+    color: var(--sdvm-warning-fg);
+  }
+
+  .overwrite-target-list,
+  .overwrite-sample-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .overwrite-target-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .overwrite-target-option {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-2);
+    cursor: pointer;
+  }
+
+  .overwrite-target-copy {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: 0;
+  }
+
+  .overwrite-sample-paths {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .overwrite-sample-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
   }
 
   .dependency-warning-list,
@@ -957,7 +1438,11 @@
     padding: var(--space-1) var(--space-3);
     border: 1px solid var(--sdvm-border);
     border-radius: var(--radius-base, 0.25rem);
-    background-color: color-mix(in oklab, var(--color-surface-900) 35%, var(--sdvm-panel));
+    background-color: color-mix(
+      in oklab,
+      var(--color-surface-900) 35%,
+      var(--sdvm-panel)
+    );
     color: inherit;
     cursor: pointer;
     transition:
@@ -966,12 +1451,24 @@
   }
 
   .tag-select-item:hover:not(:disabled) {
-    background-color: color-mix(in oklab, var(--chip-color) 10%, var(--sdvm-raised));
-    border-color: color-mix(in oklab, var(--chip-color) 25%, var(--sdvm-border));
+    background-color: color-mix(
+      in oklab,
+      var(--chip-color) 10%,
+      var(--sdvm-raised)
+    );
+    border-color: color-mix(
+      in oklab,
+      var(--chip-color) 25%,
+      var(--sdvm-border)
+    );
   }
 
   .tag-select-item--on {
-    background-color: color-mix(in oklab, var(--chip-color) 14%, var(--sdvm-raised));
+    background-color: color-mix(
+      in oklab,
+      var(--chip-color) 14%,
+      var(--sdvm-raised)
+    );
     border-color: color-mix(in oklab, var(--chip-color) 40%, transparent);
   }
 
@@ -1062,7 +1559,11 @@
     padding: var(--space-2) var(--space-3);
     border: 1px solid var(--sdvm-border);
     border-radius: var(--radius-base, 0.25rem);
-    background-color: color-mix(in oklab, var(--color-surface-900) 30%, var(--sdvm-panel));
+    background-color: color-mix(
+      in oklab,
+      var(--color-surface-900) 30%,
+      var(--sdvm-panel)
+    );
   }
 
   @media (prefers-reduced-motion: reduce) {

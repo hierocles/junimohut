@@ -1,11 +1,12 @@
 <script lang="ts">
-  import { tick } from 'svelte';
-  import { ChevronDown, ChevronUp } from '@lucide/svelte';
-  import { createAnnouncer } from '@sv-kit/a11y-keys';
-  import type { Category, Mod } from '$lib/api/client';
-  import { modStatusInfo, modStatusSortKey } from '$lib/mods/modStatus';
-  import ModGridHeaderMenu from '$lib/components/ModGridHeaderMenu.svelte';
-  import TagPicker from '$lib/components/TagPicker.svelte';
+  import { tick } from "svelte";
+  import { ChevronDown, ChevronUp } from "@lucide/svelte";
+  import { createVirtualizer } from "@tanstack/svelte-virtual";
+  import { createAnnouncer } from "@sv-kit/a11y-keys";
+  import type { Category, Mod } from "$lib/api/client";
+  import { modStatusInfo, modStatusSortKey } from "$lib/mods/modStatus";
+  import ModGridHeaderMenu from "$lib/components/ModGridHeaderMenu.svelte";
+  import TagPicker from "$lib/components/TagPicker.svelte";
   import {
     normalizeArchivePaths,
     emptyLibraryState,
@@ -16,18 +17,37 @@
     gridDependencyFilterEmptyHint,
     gridUpdatesFilterLabel,
     gridDependencyFilterLabel,
-  gridTagsLearnEmphasis,
-  gridTagsLearnHint,
-  tagsCellAddLabel,
-  tagsCellEditLabel,
-  tagsOverflowLabel,
-  gridBulkDeleteLabel,
-} from '$lib/copy';
-  import emptyStateIllustration from '$lib/assets/brand/empty-state-illustration.svg?raw';
-  import { dedupeMods } from '$lib/mods/dedupe';
-  import { displayModName } from '$lib/mods/names';
-  import { layoutTagChips } from '$lib/mods/tagChipLayout';
-  import { applyModFilters, type GridStatusFilter } from '$lib/mods/filter';
+    gridTagsLearnEmphasis,
+    gridTagsLearnHint,
+    tagsCellAddLabel,
+    tagsCellEditLabel,
+    tagsOverflowLabel,
+    gridBulkDeleteLabel,
+    modContainsOverwritesLabel,
+    modContainsOverwritesTooltip,
+    gridTagsFilterEmptyTitle,
+    gridTagsFilterEmptyHint,
+    gridClearFilter,
+    gridQuickStartLabel,
+    gridUpdatesFilterMeta,
+    gridDependencyFilterMeta,
+    gridTagsFilteringMeta,
+    gridTagsFilteringBadge,
+    gridBulkSelectedLabel,
+    gridBulkEnableSelected,
+    gridBulkDisableSelected,
+    gridBulkClearSelection,
+    gridBulkShiftHint,
+    gridBulkKeyboardHint,
+    gridSortClearedAnnounce,
+    gridSelectionClearedAnnounce,
+    gridBulkDeleteOpeningAnnounce,
+    learnHintDismissLabel,
+  } from "$lib/copy";
+  import emptyStateIllustration from "$lib/assets/brand/empty-state-illustration.svg?raw";
+  import { displayModName } from "$lib/mods/names";
+  import { layoutTagChips } from "$lib/mods/tagChipLayout";
+  import { applyModFilters, type GridStatusFilter } from "$lib/mods/filter";
   import {
     GRID_COLUMNS,
     isColumnVisible,
@@ -35,7 +55,7 @@
     toggleVisibleColumn,
     visibleColumnCount,
     type GridColumnId,
-  } from '$lib/mods/gridColumns';
+  } from "$lib/mods/gridColumns";
 
   interface Props {
     mods: Mod[];
@@ -52,7 +72,11 @@
     ondownloadupdate: (mod: Mod) => Promise<void>;
     oncontext: (mod: Mod, action: string, event?: MouseEvent) => void;
     onqueueinstall: (paths: string[]) => void;
-    ontoggletag: (modId: string, categoryId: string, assign: boolean) => void | Promise<void>;
+    ontoggletag: (
+      modId: string,
+      categoryId: string,
+      assign: boolean,
+    ) => void | Promise<void>;
     visibleColumns?: string[] | null;
     oncolumnschange?: (columns: GridColumnId[]) => void | Promise<void>;
   }
@@ -60,10 +84,10 @@
   let {
     mods,
     categories,
-    gridStatusFilter = 'none',
+    gridStatusFilter = "none",
     onClearGridStatusFilter,
     selectedModId,
-    searchQuery = '',
+    searchQuery = "",
     refreshing = false,
     onselect,
     ontoggle,
@@ -77,22 +101,34 @@
     oncolumnschange,
   }: Props = $props();
 
-  type GridRow = { kind: 'mod'; mod: Mod } | { kind: 'empty' };
+  type GridRow = { kind: "mod"; mod: Mod } | { kind: "empty" };
   const ENABLE_COL_WIDTH = 36;
   const ROW_HEIGHT_MOD = 44;
   const ROW_HEIGHT_EMPTY = 200;
 
-  type ResizableColumn = 'name' | 'tags' | 'author' | 'version' | 'folder' | 'status';
-  type SortColumn = 'name' | 'author' | 'version' | 'folder' | 'status';
-  type SortDirection = 'asc' | 'desc';
+  type ResizableColumn =
+    | "name"
+    | "tags"
+    | "author"
+    | "version"
+    | "folder"
+    | "status";
+  type SortColumn = "name" | "author" | "version" | "folder" | "status";
+  type SortDirection = "asc" | "desc";
 
-  const SORT_COLUMNS: SortColumn[] = ['name', 'author', 'version', 'folder', 'status'];
+  const SORT_COLUMNS: SortColumn[] = [
+    "name",
+    "author",
+    "version",
+    "folder",
+    "status",
+  ];
   const SORT_COLUMN_LABELS: Record<SortColumn, string> = {
-    name: 'Name',
-    author: 'Author',
-    version: 'Version',
-    folder: 'Folder',
-    status: 'Status',
+    name: "Name",
+    author: "Author",
+    version: "Version",
+    folder: "Folder",
+    status: "Status",
   };
 
   const MIN_COL_WIDTHS: Record<ResizableColumn, number> = {
@@ -115,13 +151,15 @@
 
   function loadColumnWidths(): Record<ResizableColumn, number> {
     try {
-      const raw = localStorage.getItem('sdvm-modgrid-columns');
+      const raw = localStorage.getItem("sdvm-modgrid-columns");
       if (!raw) return { ...DEFAULT_COL_WIDTHS };
-      const parsed = JSON.parse(raw) as Partial<Record<ResizableColumn, number>>;
+      const parsed = JSON.parse(raw) as Partial<
+        Record<ResizableColumn, number>
+      >;
       const widths = { ...DEFAULT_COL_WIDTHS };
       for (const key of Object.keys(DEFAULT_COL_WIDTHS) as ResizableColumn[]) {
         const w = parsed[key];
-        if (typeof w === 'number' && w >= MIN_COL_WIDTHS[key]) {
+        if (typeof w === "number" && w >= MIN_COL_WIDTHS[key]) {
           widths[key] = w;
         }
       }
@@ -133,7 +171,7 @@
 
   function loadBulkHintDismissed(): boolean {
     try {
-      return localStorage.getItem('sdvm-bulk-hint-dismissed') === '1';
+      return localStorage.getItem("sdvm-bulk-hint-dismissed") === "1";
     } catch {
       return false;
     }
@@ -141,7 +179,7 @@
 
   function loadTagsHintDismissed(): boolean {
     try {
-      return localStorage.getItem('sdvm-tags-hint-dismissed') === '1';
+      return localStorage.getItem("sdvm-tags-hint-dismissed") === "1";
     } catch {
       return false;
     }
@@ -149,38 +187,50 @@
 
   function loadWorkspaceHintDismissed(): boolean {
     try {
-      return localStorage.getItem('sdvm-workspace-hint-dismissed') === '1';
+      return localStorage.getItem("sdvm-workspace-hint-dismissed") === "1";
     } catch {
       return false;
     }
   }
 
-  function loadSortPref(): { column: SortColumn | null; direction: SortDirection | null } {
+  function loadSortPref(): {
+    column: SortColumn | null;
+    direction: SortDirection | null;
+  } {
     try {
-      const raw = localStorage.getItem('sdvm-modgrid-sort');
-      if (!raw) return { column: 'name', direction: 'asc' };
-      const parsed = JSON.parse(raw) as { column?: unknown; direction?: unknown };
+      const raw = localStorage.getItem("sdvm-modgrid-sort");
+      if (!raw) return { column: "name", direction: "asc" };
+      const parsed = JSON.parse(raw) as {
+        column?: unknown;
+        direction?: unknown;
+      };
       if (parsed.column === null && parsed.direction === null) {
         return { column: null, direction: null };
       }
       const column = parsed.column;
       const direction = parsed.direction;
       if (
-        typeof column === 'string' &&
+        typeof column === "string" &&
         SORT_COLUMNS.includes(column as SortColumn) &&
-        (direction === 'asc' || direction === 'desc')
+        (direction === "asc" || direction === "desc")
       ) {
         return { column: column as SortColumn, direction };
       }
-      return { column: 'name', direction: 'asc' };
+      return { column: "name", direction: "asc" };
     } catch {
-      return { column: 'name', direction: 'asc' };
+      return { column: "name", direction: "asc" };
     }
   }
 
-  function saveSortPref(column: SortColumn | null, direction: SortDirection | null) {
+  function saveSortPref(
+    column: SortColumn | null,
+    direction: SortDirection | null,
+  ) {
     try {
-      localStorage.setItem('sdvm-modgrid-sort', JSON.stringify({ column, direction }));
+      localStorage.setItem(
+        "sdvm-modgrid-sort",
+        JSON.stringify({ column, direction }),
+      );
     } catch {
       /* storage unavailable */
     }
@@ -213,9 +263,12 @@
   let sortDirection = $state<SortDirection | null>(initialSort.direction);
   let headerMenu = $state<{ x: number; y: number } | null>(null);
 
-  const activeVisibleColumns = $derived(normalizeVisibleColumns(visibleColumns));
+  const activeVisibleColumns = $derived(
+    normalizeVisibleColumns(visibleColumns),
+  );
   const visibleColCount = $derived(visibleColumnCount(visibleColumns));
-  const colVisible = (id: GridColumnId) => isColumnVisible(activeVisibleColumns, id);
+  const colVisible = (id: GridColumnId) =>
+    isColumnVisible(activeVisibleColumns, id);
 
   function modName(mod: Mod): string {
     return displayModName(mod);
@@ -225,33 +278,53 @@
     return modStatusSortKey(mod);
   }
 
-  function compareMods(a: Mod, b: Mod, column: SortColumn, direction: SortDirection): number {
+  function compareMods(
+    a: Mod,
+    b: Mod,
+    column: SortColumn,
+    direction: SortDirection,
+  ): number {
     let cmp = 0;
     switch (column) {
-      case 'name':
-        cmp = modName(a).localeCompare(modName(b), undefined, { sensitivity: 'base' });
-        break;
-      case 'author':
-        cmp = (a.manifest?.Author ?? '').localeCompare(b.manifest?.Author ?? '', undefined, {
-          sensitivity: 'base',
+      case "name":
+        cmp = modName(a).localeCompare(modName(b), undefined, {
+          sensitivity: "base",
         });
         break;
-      case 'version':
-        cmp = (a.manifest?.Version ?? '').localeCompare(b.manifest?.Version ?? '', undefined, {
-          numeric: true,
-          sensitivity: 'base',
+      case "author":
+        cmp = (a.manifest?.Author ?? "").localeCompare(
+          b.manifest?.Author ?? "",
+          undefined,
+          {
+            sensitivity: "base",
+          },
+        );
+        break;
+      case "version":
+        cmp = (a.manifest?.Version ?? "").localeCompare(
+          b.manifest?.Version ?? "",
+          undefined,
+          {
+            numeric: true,
+            sensitivity: "base",
+          },
+        );
+        break;
+      case "folder":
+        cmp = a.folderPath.localeCompare(b.folderPath, undefined, {
+          sensitivity: "base",
         });
         break;
-      case 'folder':
-        cmp = a.folderPath.localeCompare(b.folderPath, undefined, { sensitivity: 'base' });
-        break;
-      case 'status': {
+      case "status": {
         cmp = statusSortKey(a) - statusSortKey(b);
-        if (cmp === 0) cmp = modName(a).localeCompare(modName(b), undefined, { sensitivity: 'base' });
+        if (cmp === 0)
+          cmp = modName(a).localeCompare(modName(b), undefined, {
+            sensitivity: "base",
+          });
         break;
       }
     }
-    return direction === 'asc' ? cmp : -cmp;
+    return direction === "asc" ? cmp : -cmp;
   }
 
   function sortModList(
@@ -263,17 +336,19 @@
     return [...list].sort((a, b) => compareMods(a, b, column, direction));
   }
 
-  function ariaSortValue(column: SortColumn): 'ascending' | 'descending' | 'none' {
-    if (sortColumn !== column || !sortDirection) return 'none';
-    return sortDirection === 'asc' ? 'ascending' : 'descending';
+  function ariaSortValue(
+    column: SortColumn,
+  ): "ascending" | "descending" | "none" {
+    if (sortColumn !== column || !sortDirection) return "none";
+    return sortDirection === "asc" ? "ascending" : "descending";
   }
 
   function toggleSort(column: SortColumn) {
     if (sortColumn !== column) {
       sortColumn = column;
-      sortDirection = 'asc';
-    } else if (sortDirection === 'asc') {
-      sortDirection = 'desc';
+      sortDirection = "asc";
+    } else if (sortDirection === "asc") {
+      sortDirection = "desc";
     } else {
       sortColumn = null;
       sortDirection = null;
@@ -281,10 +356,10 @@
     saveSortPref(sortColumn, sortDirection);
 
     if (sortColumn && sortDirection) {
-      const dir = sortDirection === 'asc' ? 'ascending' : 'descending';
+      const dir = sortDirection === "asc" ? "ascending" : "descending";
       sr.announce(`Sorted by ${SORT_COLUMN_LABELS[sortColumn]}, ${dir}`);
     } else {
-      sr.announce('Sort cleared');
+      sr.announce(gridSortClearedAnnounce);
     }
   }
 
@@ -298,15 +373,15 @@
   }
 
   function onInstallDragEnter(e: DragEvent) {
-    if (!e.dataTransfer?.types.includes('Files')) return;
+    if (!e.dataTransfer?.types.includes("Files")) return;
     e.preventDefault();
     dropDragOver = true;
   }
 
   function onInstallDragOver(e: DragEvent) {
-    if (!e.dataTransfer?.types.includes('Files')) return;
+    if (!e.dataTransfer?.types.includes("Files")) return;
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'copy';
+    e.dataTransfer.dropEffect = "copy";
     dropDragOver = true;
   }
 
@@ -353,9 +428,11 @@
   const categoryById = $derived(new Map(categories.map((c) => [c.id, c])));
 
   const filteredMods = $derived(
-    applyModFilters(dedupeMods(mods), categories, gridStatusFilter),
+    applyModFilters(mods, categories, gridStatusFilter),
   );
-  const displayMods = $derived(sortModList(filteredMods, sortColumn, sortDirection));
+  const displayMods = $derived(
+    sortModList(filteredMods, sortColumn, sortDirection),
+  );
 
   const visibleModIds = $derived(displayMods.map((m) => m.id));
 
@@ -364,29 +441,43 @@
   );
 
   const deletableBulkMods = $derived(
-    displayMods.filter((mod) => activeBulkSelection.has(mod.id) && !mod.isCoreMod),
+    displayMods.filter(
+      (mod) => activeBulkSelection.has(mod.id) && !mod.isCoreMod,
+    ),
   );
 
   const gridRows = $derived.by((): GridRow[] => {
-    if (displayMods.length === 0) return [{ kind: 'empty' }];
-    return displayMods.map((mod) => ({ kind: 'mod', mod }));
+    if (displayMods.length === 0) return [{ kind: "empty" }];
+    return displayMods.map((mod) => ({ kind: "mod", mod }));
   });
 
-  function gridRowKey(row: GridRow, index: number): string {
-    if (row.kind === 'mod') return `mod:${index}:${row.mod.id}`;
-    return `empty:${index}`;
-  }
+  const isEmptyGrid = $derived(
+    gridRows.length === 1 && gridRows[0]?.kind === "empty",
+  );
+
+  const rowVirtualizer = createVirtualizer<HTMLElement, Element>({
+    count: 0,
+    getScrollElement: () => scrollEl,
+    estimateSize: () => ROW_HEIGHT_MOD,
+    overscan: 12,
+  });
+
+  $effect(() => {
+    $rowVirtualizer.setOptions({ count: isEmptyGrid ? 0 : gridRows.length });
+  });
 
   const showBulkHint = $derived(!bulkHintDismissed && displayMods.length > 0);
   const showWorkspaceHint = $derived(!workspaceHintDismissed);
   const showTagsHint = $derived(!tagsHintDismissed && displayMods.length > 0);
-  const activeLearnHint = $derived.by((): 'workspace' | 'tags' | 'bulk' | null => {
-    if (activeBulkSelection.size > 0) return null;
-    if (showWorkspaceHint) return 'workspace';
-    if (showTagsHint) return 'tags';
-    if (showBulkHint) return 'bulk';
-    return null;
-  });
+  const activeLearnHint = $derived.by(
+    (): "workspace" | "tags" | "bulk" | null => {
+      if (activeBulkSelection.size > 0) return null;
+      if (showWorkspaceHint) return "workspace";
+      if (showTagsHint) return "tags";
+      if (showBulkHint) return "bulk";
+      return null;
+    },
+  );
   const tagFilterCount = $derived(categories.filter((c) => c.visible).length);
   const tagFilterActive = $derived(
     categories.length > 0 &&
@@ -395,13 +486,13 @@
   );
 
   const emptyState = $derived(
-    gridStatusFilter === 'updates' && mods.length > 0
+    gridStatusFilter === "updates" && mods.length > 0
       ? {
           title: gridUpdatesFilterEmptyTitle(),
           hint: gridUpdatesFilterEmptyHint(),
           tip: undefined as string | undefined,
         }
-      : gridStatusFilter === 'dependencies' && mods.length > 0
+      : gridStatusFilter === "dependencies" && mods.length > 0
         ? {
             title: gridDependencyFilterEmptyTitle(),
             hint: gridDependencyFilterEmptyHint(),
@@ -409,8 +500,8 @@
           }
         : tagFilterActive && mods.length > 0
           ? {
-              title: 'No mods match these tags',
-              hint: 'Turn tags back on in the sidebar, or assign tags to mods.',
+              title: gridTagsFilterEmptyTitle,
+              hint: gridTagsFilterEmptyHint,
               tip: undefined as string | undefined,
             }
           : emptyLibraryState(searchQuery),
@@ -452,33 +543,39 @@
     }
   }
 
-  function statusInfo(mod: Mod): { text: string; badge: string | null; title?: string } {
+  function statusInfo(mod: Mod): {
+    text: string;
+    badge: string | null;
+    title?: string;
+  } {
     const info = modStatusInfo(mod);
     return { text: info.text, badge: info.badge, title: info.title };
   }
 
   function versionDisplay(mod: Mod): { text: string; class: string } {
-    const current = mod.manifest?.Version ?? '';
+    const current = mod.manifest?.Version ?? "";
     const state = mod.updateStatus?.state;
-    if (state === 'update' || state === 'update_available') {
+    if (state === "update" || state === "update_available") {
       const latest = mod.updateStatus?.latestVersion;
       if (latest) {
-        return { text: `${current} → ${latest}`, class: 'state-update' };
+        return { text: `${current} → ${latest}`, class: "state-update" };
       }
     }
-    return { text: current, class: '' };
+    return { text: current, class: "" };
   }
 
   function canDownloadUpdate(mod: Mod): boolean {
     const state = mod.updateStatus?.state;
-    if (state !== 'update' && state !== 'update_available') return false;
-    return mod.manifest?.UpdateKeys?.some((k) => k.startsWith('Nexus:')) ?? false;
+    if (state !== "update" && state !== "update_available") return false;
+    return (
+      mod.manifest?.UpdateKeys?.some((k) => k.startsWith("Nexus:")) ?? false
+    );
   }
 
   function dismissBulkHint() {
     bulkHintDismissed = true;
     try {
-      localStorage.setItem('sdvm-bulk-hint-dismissed', '1');
+      localStorage.setItem("sdvm-bulk-hint-dismissed", "1");
     } catch {
       /* storage unavailable */
     }
@@ -487,7 +584,7 @@
   function dismissTagsHint() {
     tagsHintDismissed = true;
     try {
-      localStorage.setItem('sdvm-tags-hint-dismissed', '1');
+      localStorage.setItem("sdvm-tags-hint-dismissed", "1");
     } catch {
       /* storage unavailable */
     }
@@ -496,7 +593,7 @@
   function dismissWorkspaceHint() {
     workspaceHintDismissed = true;
     try {
-      localStorage.setItem('sdvm-workspace-hint-dismissed', '1');
+      localStorage.setItem("sdvm-workspace-hint-dismissed", "1");
     } catch {
       /* storage unavailable */
     }
@@ -506,7 +603,7 @@
     if (count === 0) return;
     sr.announce(
       count === 1
-        ? '1 mod selected'
+        ? "1 mod selected"
         : `${count} mods selected. Use Enable, Disable, Delete, or Clear selection.`,
     );
   }
@@ -548,7 +645,7 @@
 
   function clearBulkSelection() {
     bulkSelected = new Set();
-    sr.announce('Selection cleared');
+    sr.announce(gridSelectionClearedAnnounce);
   }
 
   async function bulkEnable(enabled: boolean) {
@@ -559,7 +656,9 @@
       await onbulktoggle(ids, enabled);
       bulkSelected = new Set();
       const n = ids.length;
-      sr.announce(`${enabled ? 'Enabled' : 'Disabled'} ${n === 1 ? '1 mod' : `${n} mods`}`);
+      sr.announce(
+        `${enabled ? "Enabled" : "Disabled"} ${n === 1 ? "1 mod" : `${n} mods`}`,
+      );
     } finally {
       bulkActionLoading = false;
     }
@@ -573,28 +672,29 @@
       await onbulkdelete(targets);
       bulkSelected = new Set();
       const n = targets.length;
-      sr.announce(n === 1 ? 'Opening delete for 1 mod' : `Opening delete for ${n} mods`);
+      sr.announce(gridBulkDeleteOpeningAnnounce(n));
     } finally {
       bulkActionLoading = false;
     }
   }
 
   function gridIndexForModId(id: string): number {
-    return gridRows.findIndex((row) => row.kind === 'mod' && row.mod.id === id);
+    return gridRows.findIndex((row) => row.kind === "mod" && row.mod.id === id);
   }
 
   async function focusModRow(id: string) {
     focusedModId = id;
     const gridIndex = gridIndexForModId(id);
     if (gridIndex === -1) return;
+    $rowVirtualizer.scrollToIndex(gridIndex, { align: "auto" });
     await tick();
-    scrollEl
-      ?.querySelector<HTMLElement>(`tr[data-mod-id="${id}"]`)
-      ?.scrollIntoView({ block: 'nearest' });
     scrollEl?.querySelector<HTMLElement>(`tr[data-mod-id="${id}"]`)?.focus();
   }
 
-  async function navigateModRow(delta: number, jump: 'none' | 'home' | 'end' = 'none') {
+  async function navigateModRow(
+    delta: number,
+    jump: "none" | "home" | "end" = "none",
+  ) {
     const ids = visibleModIds;
     if (!ids.length) return;
 
@@ -602,9 +702,13 @@
     const currentId = focusedModId ?? selectedModId ?? ids[0];
     const currentIdx = ids.indexOf(currentId);
 
-    if (jump === 'home') idx = 0;
-    else if (jump === 'end') idx = ids.length - 1;
-    else idx = Math.max(0, Math.min(ids.length - 1, (currentIdx === -1 ? 0 : currentIdx) + delta));
+    if (jump === "home") idx = 0;
+    else if (jump === "end") idx = ids.length - 1;
+    else
+      idx = Math.max(
+        0,
+        Math.min(ids.length - 1, (currentIdx === -1 ? 0 : currentIdx) + delta),
+      );
 
     const nextId = ids[idx];
     if (!nextId) return;
@@ -615,9 +719,9 @@
 
   function onRowKeydown(mod: Mod, e: KeyboardEvent) {
     const target = e.target as HTMLElement;
-    if (target.closest('button, input, .resize-handle')) return;
+    if (target.closest("button, input, .resize-handle")) return;
 
-    if (e.key === 'Enter') {
+    if (e.key === "Enter") {
       if (e.target !== e.currentTarget) return;
       e.preventDefault();
       bulkSelected = new Set();
@@ -627,54 +731,55 @@
       return;
     }
 
-    if (e.key === ' ') {
+    if (e.key === " ") {
       if (e.target !== e.currentTarget) return;
       e.preventDefault();
       if (mod.isCoreMod) return;
       const nextEnabled = !mod.enabled;
       ontoggle(mod.id, nextEnabled);
-      sr.announce(`${modName(mod)} ${nextEnabled ? 'enabled' : 'disabled'}`);
+      sr.announce(`${modName(mod)} ${nextEnabled ? "enabled" : "disabled"}`);
     }
   }
 
   function onGridKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape' && headerMenu) {
+    if (e.key === "Escape" && headerMenu) {
       e.preventDefault();
       e.stopPropagation();
       closeHeaderMenu();
       return;
     }
-    if (e.key === 'Escape' && tagPicker) {
+    if (e.key === "Escape" && tagPicker) {
       e.preventDefault();
       e.stopPropagation();
       closeTagPicker();
       return;
     }
-    if (e.key === 'Escape' && activeBulkSelection.size > 0) {
+    if (e.key === "Escape" && activeBulkSelection.size > 0) {
       e.preventDefault();
       clearBulkSelection();
       return;
     }
 
     const target = e.target as HTMLElement;
-    if (target.closest('button, input, .resize-handle, .th-sort-btn, thead')) return;
+    if (target.closest("button, input, .resize-handle, .th-sort-btn, thead"))
+      return;
 
     switch (e.key) {
-      case 'ArrowDown':
+      case "ArrowDown":
         e.preventDefault();
         void navigateModRow(1);
         break;
-      case 'ArrowUp':
+      case "ArrowUp":
         e.preventDefault();
         void navigateModRow(-1);
         break;
-      case 'Home':
+      case "Home":
         e.preventDefault();
-        void navigateModRow(0, 'home');
+        void navigateModRow(0, "home");
         break;
-      case 'End':
+      case "End":
         e.preventDefault();
-        void navigateModRow(0, 'end');
+        void navigateModRow(0, "end");
         break;
     }
   }
@@ -716,7 +821,10 @@
     if (!resizeState) return;
     resizeState = null;
     try {
-      localStorage.setItem('sdvm-modgrid-columns', JSON.stringify(columnWidths));
+      localStorage.setItem(
+        "sdvm-modgrid-columns",
+        JSON.stringify(columnWidths),
+      );
     } catch {
       /* storage unavailable */
     }
@@ -736,7 +844,12 @@
   ondrop={onInstallDrop}
 >
   {#if refreshing}
-    <div class="refresh-indicator shrink-0" role="status" aria-live="polite" aria-label="Refreshing mod list"></div>
+    <div
+      class="mod-grid-refresh-indicator refresh-sweep-indicator"
+      role="status"
+      aria-live="polite"
+      aria-label="Refreshing mod list"
+    ></div>
   {/if}
   {#if activeBulkSelection.size >= 1}
     <div
@@ -744,14 +857,16 @@
       role="status"
       aria-live="polite"
     >
-      <span class="bulk-count">{activeBulkSelection.size} selected</span>
+      <span class="bulk-count"
+        >{gridBulkSelectedLabel(activeBulkSelection.size)}</span
+      >
       <button
         type="button"
         class="btn btn-sm preset-tonal"
         disabled={bulkActionLoading}
         onclick={() => bulkEnable(true)}
       >
-        Enable selected
+        {gridBulkEnableSelected}
       </button>
       <button
         type="button"
@@ -759,7 +874,7 @@
         disabled={bulkActionLoading}
         onclick={() => bulkEnable(false)}
       >
-        Disable selected
+        {gridBulkDisableSelected}
       </button>
       <button
         type="button"
@@ -767,7 +882,9 @@
         disabled={bulkActionLoading || deletableBulkMods.length === 0}
         onclick={() => bulkDelete()}
       >
-        {gridBulkDeleteLabel(deletableBulkMods.length || activeBulkSelection.size)}
+        {gridBulkDeleteLabel(
+          deletableBulkMods.length || activeBulkSelection.size,
+        )}
       </button>
       <button
         type="button"
@@ -775,62 +892,88 @@
         disabled={bulkActionLoading}
         onclick={clearBulkSelection}
       >
-        Clear selection
+        {gridBulkClearSelection}
       </button>
       {#if activeBulkSelection.size === 1}
-        <span class="type-caption type-meta">Shift+click another row to add to the selection</span>
+        <span class="type-caption type-meta">{gridBulkShiftHint}</span>
       {/if}
     </div>
   {/if}
   {#if tagFilterActive}
     <div class="mod-grid-chrome-bar mod-grid-chrome-bar--status" role="status">
       <span class="state-badge state-badge--info">
-        {tagFilterCount} tag{tagFilterCount === 1 ? '' : 's'} filtering list
+        {gridTagsFilteringBadge(tagFilterCount)}
       </span>
-      <span class="type-meta">Hides rows only — enabled mods and SMAPI are unchanged</span>
+      <span class="type-meta">{gridTagsFilteringMeta}</span>
     </div>
   {/if}
-  {#if gridStatusFilter === 'updates'}
+  {#if gridStatusFilter === "updates"}
     <div class="mod-grid-chrome-bar mod-grid-chrome-bar--status" role="status">
       <span class="state-badge state-badge--update">
         {gridUpdatesFilterLabel(displayMods.length)}
       </span>
-      <span class="type-meta">Showing mods with an update in the Status column</span>
+      <span class="type-meta">{gridUpdatesFilterMeta}</span>
       {#if onClearGridStatusFilter}
-        <button type="button" class="anchor text-surface-400 ml-auto" onclick={onClearGridStatusFilter}>
-          Clear filter
+        <button
+          type="button"
+          class="anchor text-surface-400 ml-auto"
+          onclick={onClearGridStatusFilter}
+        >
+          {gridClearFilter}
         </button>
       {/if}
     </div>
-  {:else if gridStatusFilter === 'dependencies'}
+  {:else if gridStatusFilter === "dependencies"}
     <div class="mod-grid-chrome-bar mod-grid-chrome-bar--status" role="status">
       <span class="state-badge state-badge--error">
         {gridDependencyFilterLabel(displayMods.length)}
       </span>
-      <span class="type-meta">Showing mods with missing or unsatisfied dependencies</span>
+      <span class="type-meta">{gridDependencyFilterMeta}</span>
       {#if onClearGridStatusFilter}
-        <button type="button" class="anchor text-surface-400 ml-auto" onclick={onClearGridStatusFilter}>
-          Clear filter
+        <button
+          type="button"
+          class="anchor text-surface-400 ml-auto"
+          onclick={onClearGridStatusFilter}
+        >
+          {gridClearFilter}
         </button>
       {/if}
     </div>
   {/if}
-  {#if activeLearnHint === 'workspace'}
-    <div class="mod-grid-chrome-bar mod-grid-chrome-bar--learn mod-grid-chrome-bar--learn-accent" role="note">
-      <span class="mod-grid-chrome-bar-label">Quick start</span>
-      <span class="type-meta text-surface-300">{workspaceOnboardingText()}</span>
-      <button type="button" class="anchor text-surface-400 ml-auto" onclick={dismissWorkspaceHint}>Got it</button>
+  {#if activeLearnHint === "workspace"}
+    <div
+      class="mod-grid-chrome-bar mod-grid-chrome-bar--learn mod-grid-chrome-bar--learn-accent"
+      role="note"
+    >
+      <span class="mod-grid-chrome-bar-label">{gridQuickStartLabel}</span>
+      <span class="type-meta text-surface-300">{workspaceOnboardingText()}</span
+      >
+      <button
+        type="button"
+        class="anchor text-surface-400 ml-auto"
+        onclick={dismissWorkspaceHint}>Got it</button
+      >
     </div>
-  {:else if activeLearnHint === 'tags'}
-    <div class="mod-grid-chrome-bar mod-grid-chrome-bar--learn mod-grid-chrome-bar--learn-accent">
+  {:else if activeLearnHint === "tags"}
+    <div
+      class="mod-grid-chrome-bar mod-grid-chrome-bar--learn mod-grid-chrome-bar--learn-accent"
+    >
       <span class="mod-grid-chrome-bar-emphasis">{gridTagsLearnEmphasis}</span>
       <span>{gridTagsLearnHint}</span>
-      <button type="button" class="anchor text-surface-400 ml-auto" onclick={dismissTagsHint}>Dismiss</button>
+      <button
+        type="button"
+        class="anchor text-surface-400 ml-auto"
+        onclick={dismissTagsHint}>{learnHintDismissLabel}</button
+      >
     </div>
-  {:else if activeLearnHint === 'bulk'}
+  {:else if activeLearnHint === "bulk"}
     <div class="mod-grid-chrome-bar mod-grid-chrome-bar--learn">
-      <span>Ctrl+click to select multiple mods · Shift+click for a range · Esc to clear</span>
-      <button type="button" class="anchor text-surface-400 ml-auto" onclick={dismissBulkHint}>Dismiss</button>
+      <span>{gridBulkKeyboardHint}</span>
+      <button
+        type="button"
+        class="anchor text-surface-400 ml-auto"
+        onclick={dismissBulkHint}>{learnHintDismissLabel}</button
+      >
     </div>
   {/if}
 
@@ -849,165 +992,277 @@
       onkeydown={onGridKeydown}
     >
       <caption class="sr-only">
-        Installed mods. Right-click column headers to show or hide columns. Click headers to sort. Arrow keys
-        move between rows. Space toggles enabled. Enter opens details.
+        Installed mods. Right-click column headers to show or hide columns.
+        Click headers to sort. Arrow keys move between rows. Space toggles
+        enabled. Enter opens details.
       </caption>
       <colgroup>
-        {#if colVisible('enabled')}
+        {#if colVisible("enabled")}
           <col style="width: {ENABLE_COL_WIDTH}px" />
         {/if}
-        {#if colVisible('name')}
+        {#if colVisible("name")}
           <col style="width: {columnWidths.name}px" />
         {/if}
-        {#if colVisible('tags')}
+        {#if colVisible("tags")}
           <col style="width: {columnWidths.tags}px" />
         {/if}
-        {#if colVisible('author')}
+        {#if colVisible("author")}
           <col style="width: {columnWidths.author}px" />
         {/if}
-        {#if colVisible('version')}
+        {#if colVisible("version")}
           <col style="width: {columnWidths.version}px" />
         {/if}
-        {#if colVisible('folder')}
+        {#if colVisible("folder")}
           <col style="width: {columnWidths.folder}px" />
         {/if}
-        {#if colVisible('status')}
+        {#if colVisible("status")}
           <col style="width: {columnWidths.status}px" />
         {/if}
       </colgroup>
       <thead class="mod-grid-thead" oncontextmenu={openHeaderMenu}>
         <tr class="mod-table-head-row">
-          {#if colVisible('enabled')}
+          {#if colVisible("enabled")}
             <th scope="col">
               <span class="sr-only">Enabled</span>
             </th>
           {/if}
-          {#if colVisible('name')}
-            <th scope="col" class="th-resizable th-sortable" aria-sort={ariaSortValue('name')}>
-              <button type="button" class="th-sort-btn" onclick={() => toggleSort('name')}>
+          {#if colVisible("name")}
+            <th
+              scope="col"
+              class="th-resizable th-sortable"
+              aria-sort={ariaSortValue("name")}
+            >
+              <button
+                type="button"
+                class="th-sort-btn"
+                onclick={() => toggleSort("name")}
+              >
                 <span class="type-label th-label">Name</span>
-                {#if sortColumn === 'name' && sortDirection === 'asc'}
-                  <ChevronUp size={12} strokeWidth={2.5} aria-hidden="true" class="th-sort-icon" />
-                {:else if sortColumn === 'name' && sortDirection === 'desc'}
-                  <ChevronDown size={12} strokeWidth={2.5} aria-hidden="true" class="th-sort-icon" />
+                {#if sortColumn === "name" && sortDirection === "asc"}
+                  <ChevronUp
+                    size={12}
+                    strokeWidth={2.5}
+                    aria-hidden="true"
+                    class="th-sort-icon"
+                  />
+                {:else if sortColumn === "name" && sortDirection === "desc"}
+                  <ChevronDown
+                    size={12}
+                    strokeWidth={2.5}
+                    aria-hidden="true"
+                    class="th-sort-icon"
+                  />
                 {/if}
               </button>
               <button
                 type="button"
                 class="resize-handle"
                 aria-label="Resize Name column"
-                onmousedown={(e) => startColumnResize('name', e)}
+                onmousedown={(e) => startColumnResize("name", e)}
               ></button>
             </th>
           {/if}
-          {#if colVisible('tags')}
+          {#if colVisible("tags")}
             <th scope="col" class="th-resizable">
               <span class="type-label th-label">Tags</span>
               <button
                 type="button"
                 class="resize-handle"
                 aria-label="Resize Tags column"
-                onmousedown={(e) => startColumnResize('tags', e)}
+                onmousedown={(e) => startColumnResize("tags", e)}
               ></button>
             </th>
           {/if}
-          {#if colVisible('author')}
-            <th scope="col" class="th-resizable th-sortable" aria-sort={ariaSortValue('author')}>
-              <button type="button" class="th-sort-btn" onclick={() => toggleSort('author')}>
+          {#if colVisible("author")}
+            <th
+              scope="col"
+              class="th-resizable th-sortable"
+              aria-sort={ariaSortValue("author")}
+            >
+              <button
+                type="button"
+                class="th-sort-btn"
+                onclick={() => toggleSort("author")}
+              >
                 <span class="type-label th-label">Author</span>
-                {#if sortColumn === 'author' && sortDirection === 'asc'}
-                  <ChevronUp size={12} strokeWidth={2.5} aria-hidden="true" class="th-sort-icon" />
-                {:else if sortColumn === 'author' && sortDirection === 'desc'}
-                  <ChevronDown size={12} strokeWidth={2.5} aria-hidden="true" class="th-sort-icon" />
+                {#if sortColumn === "author" && sortDirection === "asc"}
+                  <ChevronUp
+                    size={12}
+                    strokeWidth={2.5}
+                    aria-hidden="true"
+                    class="th-sort-icon"
+                  />
+                {:else if sortColumn === "author" && sortDirection === "desc"}
+                  <ChevronDown
+                    size={12}
+                    strokeWidth={2.5}
+                    aria-hidden="true"
+                    class="th-sort-icon"
+                  />
                 {/if}
               </button>
               <button
                 type="button"
                 class="resize-handle"
                 aria-label="Resize Author column"
-                onmousedown={(e) => startColumnResize('author', e)}
+                onmousedown={(e) => startColumnResize("author", e)}
               ></button>
             </th>
           {/if}
-          {#if colVisible('version')}
-            <th scope="col" class="th-resizable th-sortable" aria-sort={ariaSortValue('version')}>
-              <button type="button" class="th-sort-btn" onclick={() => toggleSort('version')}>
+          {#if colVisible("version")}
+            <th
+              scope="col"
+              class="th-resizable th-sortable"
+              aria-sort={ariaSortValue("version")}
+            >
+              <button
+                type="button"
+                class="th-sort-btn"
+                onclick={() => toggleSort("version")}
+              >
                 <span class="type-label th-label">Version</span>
-                {#if sortColumn === 'version' && sortDirection === 'asc'}
-                  <ChevronUp size={12} strokeWidth={2.5} aria-hidden="true" class="th-sort-icon" />
-                {:else if sortColumn === 'version' && sortDirection === 'desc'}
-                  <ChevronDown size={12} strokeWidth={2.5} aria-hidden="true" class="th-sort-icon" />
+                {#if sortColumn === "version" && sortDirection === "asc"}
+                  <ChevronUp
+                    size={12}
+                    strokeWidth={2.5}
+                    aria-hidden="true"
+                    class="th-sort-icon"
+                  />
+                {:else if sortColumn === "version" && sortDirection === "desc"}
+                  <ChevronDown
+                    size={12}
+                    strokeWidth={2.5}
+                    aria-hidden="true"
+                    class="th-sort-icon"
+                  />
                 {/if}
               </button>
               <button
                 type="button"
                 class="resize-handle"
                 aria-label="Resize Version column"
-                onmousedown={(e) => startColumnResize('version', e)}
+                onmousedown={(e) => startColumnResize("version", e)}
               ></button>
             </th>
           {/if}
-          {#if colVisible('folder')}
-            <th scope="col" class="th-resizable th-sortable" aria-sort={ariaSortValue('folder')}>
-              <button type="button" class="th-sort-btn" onclick={() => toggleSort('folder')}>
+          {#if colVisible("folder")}
+            <th
+              scope="col"
+              class="th-resizable th-sortable"
+              aria-sort={ariaSortValue("folder")}
+            >
+              <button
+                type="button"
+                class="th-sort-btn"
+                onclick={() => toggleSort("folder")}
+              >
                 <span class="type-label th-label">Folder</span>
-                {#if sortColumn === 'folder' && sortDirection === 'asc'}
-                  <ChevronUp size={12} strokeWidth={2.5} aria-hidden="true" class="th-sort-icon" />
-                {:else if sortColumn === 'folder' && sortDirection === 'desc'}
-                  <ChevronDown size={12} strokeWidth={2.5} aria-hidden="true" class="th-sort-icon" />
+                {#if sortColumn === "folder" && sortDirection === "asc"}
+                  <ChevronUp
+                    size={12}
+                    strokeWidth={2.5}
+                    aria-hidden="true"
+                    class="th-sort-icon"
+                  />
+                {:else if sortColumn === "folder" && sortDirection === "desc"}
+                  <ChevronDown
+                    size={12}
+                    strokeWidth={2.5}
+                    aria-hidden="true"
+                    class="th-sort-icon"
+                  />
                 {/if}
               </button>
               <button
                 type="button"
                 class="resize-handle"
                 aria-label="Resize Folder column"
-                onmousedown={(e) => startColumnResize('folder', e)}
+                onmousedown={(e) => startColumnResize("folder", e)}
               ></button>
             </th>
           {/if}
-          {#if colVisible('status')}
-            <th scope="col" class="th-resizable th-sortable" aria-sort={ariaSortValue('status')}>
-              <button type="button" class="th-sort-btn" onclick={() => toggleSort('status')}>
+          {#if colVisible("status")}
+            <th
+              scope="col"
+              class="th-resizable th-sortable"
+              aria-sort={ariaSortValue("status")}
+            >
+              <button
+                type="button"
+                class="th-sort-btn"
+                onclick={() => toggleSort("status")}
+              >
                 <span class="type-label th-label">Status</span>
-                {#if sortColumn === 'status' && sortDirection === 'asc'}
-                  <ChevronUp size={12} strokeWidth={2.5} aria-hidden="true" class="th-sort-icon" />
-                {:else if sortColumn === 'status' && sortDirection === 'desc'}
-                  <ChevronDown size={12} strokeWidth={2.5} aria-hidden="true" class="th-sort-icon" />
+                {#if sortColumn === "status" && sortDirection === "asc"}
+                  <ChevronUp
+                    size={12}
+                    strokeWidth={2.5}
+                    aria-hidden="true"
+                    class="th-sort-icon"
+                  />
+                {:else if sortColumn === "status" && sortDirection === "desc"}
+                  <ChevronDown
+                    size={12}
+                    strokeWidth={2.5}
+                    aria-hidden="true"
+                    class="th-sort-icon"
+                  />
                 {/if}
               </button>
               <button
                 type="button"
                 class="resize-handle"
                 aria-label="Resize Status column"
-                onmousedown={(e) => startColumnResize('status', e)}
+                onmousedown={(e) => startColumnResize("status", e)}
               ></button>
             </th>
           {/if}
         </tr>
       </thead>
       <tbody>
-        {#each gridRows as row, index (gridRowKey(row, index))}
-          {#if row.kind === 'empty'}
-            <tr style="height: {ROW_HEIGHT_EMPTY}px">
-              <td colspan={visibleColCount} class="empty-state-cell">
-                <div class="empty-state-inner">
-                  {#if !searchQuery.trim()}
-                    <div class="empty-state-mark" aria-hidden="true">
-                      {@html emptyStateIllustration}
-                    </div>
-                  {/if}
-                  <p class="empty-state-title">{emptyState.title}</p>
-                  <p class="empty-state-hint">{emptyState.hint}</p>
-                  {#if emptyState.tip}
-                    <p class="empty-state-tip">{emptyState.tip}</p>
-                  {/if}
-                </div>
-              </td>
+        {#if isEmptyGrid}
+          <tr style="height: {ROW_HEIGHT_EMPTY}px">
+            <td colspan={visibleColCount} class="empty-state-cell">
+              <div class="empty-state-inner">
+                {#if !searchQuery.trim()}
+                  <div class="empty-state-mark" aria-hidden="true">
+                    {@html emptyStateIllustration}
+                  </div>
+                {/if}
+                <p class="empty-state-title">{emptyState.title}</p>
+                <p class="empty-state-hint">{emptyState.hint}</p>
+                {#if emptyState.tip}
+                  <p class="empty-state-tip">{emptyState.tip}</p>
+                {/if}
+              </div>
+            </td>
+          </tr>
+        {:else}
+          {@const virtualItems = $rowVirtualizer.getVirtualItems()}
+          {@const paddingTop =
+            virtualItems.length > 0 ? virtualItems[0].start : 0}
+          {@const paddingBottom =
+            virtualItems.length > 0
+              ? $rowVirtualizer.getTotalSize() - virtualItems.at(-1)!.end
+              : 0}
+          {#if paddingTop > 0}
+            <tr class="virtual-spacer" aria-hidden="true">
+              <td colspan={visibleColCount} style="height: {paddingTop}px"></td>
             </tr>
-          {:else}
-            {@render modRow(row.mod)}
           {/if}
-        {/each}
+          {#each virtualItems as virtualRow (virtualRow.key)}
+            {@const row = gridRows[virtualRow.index]}
+            {#if row.kind === "mod"}
+              {@render modRow(row.mod)}
+            {/if}
+          {/each}
+          {#if paddingBottom > 0}
+            <tr class="virtual-spacer" aria-hidden="true">
+              <td colspan={visibleColCount} style="height: {paddingBottom}px"
+              ></td>
+            </tr>
+          {/if}
+        {/if}
       </tbody>
     </table>
   </div>
@@ -1038,16 +1293,18 @@
     class:disabled-row={!mod.enabled && !mod.isCoreMod}
     style="height: {ROW_HEIGHT_MOD}px"
     data-mod-id={mod.id}
-    tabindex={focusedModId === mod.id || (focusedModId == null && isSelected) ? 0 : -1}
+    tabindex={focusedModId === mod.id || (focusedModId == null && isSelected)
+      ? 0
+      : -1}
     aria-selected={isSelected || isBulkSelected}
     onclick={(e) => onRowClick(mod, e)}
     onkeydown={(e) => onRowKeydown(mod, e)}
     oncontextmenu={(e) => {
       e.preventDefault();
-      oncontext(mod, 'menu', e);
+      oncontext(mod, "menu", e);
     }}
   >
-    {#if colVisible('enabled')}
+    {#if colVisible("enabled")}
       <td class="text-center" role="gridcell">
         <input
           type="checkbox"
@@ -1056,16 +1313,19 @@
           disabled={mod.isCoreMod}
           aria-label="Enable {modName(mod)}"
           onclick={(e) => e.stopPropagation()}
-          onchange={(e) => ontoggle(mod.id, (e.currentTarget as HTMLInputElement).checked)}
+          onchange={(e) =>
+            ontoggle(mod.id, (e.currentTarget as HTMLInputElement).checked)}
         />
       </td>
     {/if}
-    {#if colVisible('name')}
+    {#if colVisible("name")}
       <td class="cell-truncate" role="gridcell">
-        <span class="mod-name min-w-0 truncate text-surface-50">{modName(mod)}</span>
+        <span class="mod-name min-w-0 truncate text-surface-50"
+          >{modName(mod)}</span
+        >
       </td>
     {/if}
-    {#if colVisible('tags')}
+    {#if colVisible("tags")}
       <td
         class="tags-cell"
         class:tags-cell--empty={modCategories.length === 0}
@@ -1090,7 +1350,7 @@
               {#each tagLayout.visible as cat (cat.id)}
                 <span
                   class="tag-chip chip-colored type-caption"
-                  style:--chip-color={cat.color || 'var(--color-primary-500)'}
+                  style:--chip-color={cat.color || "var(--color-primary-500)"}
                   title={cat.name}
                 >
                   {cat.name}
@@ -1100,7 +1360,10 @@
                 <span
                   class="tag-chip tag-chip-overflow type-caption"
                   title={tagLayout.overflowLabel}
-                  aria-label={tagsOverflowLabel(tagLayout.overflowCount, tagLayout.overflowLabel)}
+                  aria-label={tagsOverflowLabel(
+                    tagLayout.overflowCount,
+                    tagLayout.overflowLabel,
+                  )}
                 >
                   +{tagLayout.overflowCount}
                 </span>
@@ -1110,27 +1373,40 @@
         </button>
       </td>
     {/if}
-    {#if colVisible('author')}
+    {#if colVisible("author")}
       <td class="cell-truncate type-meta" role="gridcell">
-        {mod.manifest?.Author || '—'}
+        {mod.manifest?.Author || "—"}
       </td>
     {/if}
-    {#if colVisible('version')}
+    {#if colVisible("version")}
       <td class="cell-truncate type-data {version.class}" role="gridcell">
-        {version.text || '—'}
+        {version.text || "—"}
       </td>
     {/if}
-    {#if colVisible('folder')}
+    {#if colVisible("folder")}
       <td class="cell-truncate type-meta" role="gridcell">
         {mod.folderPath}
       </td>
     {/if}
-    {#if colVisible('status')}
+    {#if colVisible("status")}
       <td role="gridcell">
-        <div class="status-cell flex min-w-0 items-center gap-2 overflow-hidden">
-          <span class="min-w-0 truncate {status.badge ?? 'state-muted'}" title={status.title}>
+        <div
+          class="status-cell flex min-w-0 items-center gap-2 overflow-hidden"
+        >
+          <span
+            class="min-w-0 truncate {status.badge ?? 'state-muted'}"
+            title={status.title}
+          >
             {status.text}
           </span>
+          {#if mod.containsOverwrites}
+            <span
+              class="state-badge state-badge--patch type-caption shrink-0"
+              title={modContainsOverwritesTooltip()}
+            >
+              {modContainsOverwritesLabel()}
+            </span>
+          {/if}
           {#if canDownloadUpdate(mod)}
             <button
               type="button"
@@ -1139,7 +1415,7 @@
               aria-busy={isDownloading}
               onclick={(e) => downloadUpdate(mod, e)}
             >
-              {isDownloading ? 'Downloading…' : 'Get update'}
+              {isDownloading ? "Downloading…" : "Get update"}
             </button>
           {/if}
         </div>
@@ -1151,7 +1427,7 @@
 {#if tagPicker}
   <TagPicker
     mod={tagPicker.mod}
-    categories={categories}
+    {categories}
     x={tagPicker.x}
     y={tagPicker.y}
     busy={tagPickerBusy}
@@ -1166,17 +1442,27 @@
   }
 
   .mod-grid--drop-target::after {
-    content: '';
+    content: "";
     position: absolute;
     inset: 0;
     pointer-events: none;
     border: 1px dashed var(--color-primary-500);
-    background-color: color-mix(in oklab, var(--color-primary-500) 8%, transparent);
+    background-color: color-mix(
+      in oklab,
+      var(--color-primary-500) 8%,
+      transparent
+    );
     z-index: 1;
   }
 
   .mod-table {
     table-layout: fixed;
+  }
+
+  .mod-table :global(.virtual-spacer td) {
+    padding: 0;
+    border: none;
+    line-height: 0;
   }
 
   .mod-table :global(th),
@@ -1191,25 +1477,13 @@
     width: var(--space-10);
   }
 
-  .refresh-indicator {
-    height: 2px;
-    background: linear-gradient(
-      90deg,
-      transparent,
-      var(--color-primary-500),
-      transparent
-    );
-    background-size: 200% 100%;
-    animation: refresh-sweep 1.2s ease-in-out infinite;
-  }
-
-  @keyframes refresh-sweep {
-    0% {
-      background-position: 200% 0;
-    }
-    100% {
-      background-position: -200% 0;
-    }
+  .mod-grid-refresh-indicator {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: calc(var(--z-sticky) + 1);
+    pointer-events: none;
   }
 
   .bulk-count {
@@ -1241,7 +1515,7 @@
     height: 4rem;
     margin-bottom: var(--space-2);
     color: var(--jh-illustration-fg, var(--color-surface-500));
-    border-radius: var(--radius-soft, 0.625rem);
+    border-radius: var(--radius-soft);
     background-color: var(
       --jh-illustration-bg,
       color-mix(in oklab, var(--color-surface-900) 50%, var(--sdvm-panel))
@@ -1277,7 +1551,11 @@
     text-wrap: pretty;
     border: 1px solid var(--sdvm-border);
     border-radius: var(--radius-base, 0.25rem);
-    background-color: color-mix(in oklab, var(--color-surface-900) 35%, var(--sdvm-panel));
+    background-color: color-mix(
+      in oklab,
+      var(--color-surface-900) 35%,
+      var(--sdvm-panel)
+    );
   }
 
   .mod-name {
@@ -1313,7 +1591,11 @@
 
   .tags-cell--empty .tags-cell-trigger:hover,
   .tags-cell--empty .tags-cell-trigger:focus-visible {
-    background-color: color-mix(in oklab, var(--color-primary-500) 6%, transparent);
+    background-color: color-mix(
+      in oklab,
+      var(--color-primary-500) 6%,
+      transparent
+    );
   }
 
   .tags-add-pill {
@@ -1331,9 +1613,17 @@
 
   .tags-cell--empty .tags-cell-trigger:hover .tags-add-pill,
   .tags-cell--empty .tags-cell-trigger:focus-visible .tags-add-pill {
-    border-color: color-mix(in oklab, var(--color-primary-400) 45%, var(--sdvm-border));
+    border-color: color-mix(
+      in oklab,
+      var(--color-primary-400) 45%,
+      var(--sdvm-border)
+    );
     color: var(--color-surface-200);
-    background-color: color-mix(in oklab, var(--color-primary-500) 10%, var(--sdvm-raised));
+    background-color: color-mix(
+      in oklab,
+      var(--color-primary-500) 10%,
+      var(--sdvm-raised)
+    );
   }
 
   .tags-add-icon {
@@ -1371,7 +1661,11 @@
   .tag-chip-overflow {
     flex-shrink: 0;
     color: var(--color-surface-300);
-    background-color: color-mix(in oklab, var(--color-surface-800) 75%, var(--sdvm-panel));
+    background-color: color-mix(
+      in oklab,
+      var(--color-surface-800) 75%,
+      var(--sdvm-panel)
+    );
     border: 1px solid var(--sdvm-border);
   }
 
@@ -1420,12 +1714,6 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .refresh-indicator {
-      animation: none;
-      background: var(--color-primary-500);
-      opacity: 0.6;
-    }
-
     tr.mod-row {
       transition: none;
     }

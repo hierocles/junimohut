@@ -2,11 +2,19 @@ package categories
 
 import "strings"
 
-// TagIDForNexusCategory maps a Nexus Mods page category name to a default tag ID.
+func normalizeNexusCategory(name string) string {
+	key := strings.ToLower(strings.TrimSpace(name))
+	return strings.Join(strings.Fields(key), " ")
+}
+
+// NexusCategoryDefersUntilManifest reports Nexus categories whose tag mapping
+// may be overridden once install archives are scanned (e.g. Clothing → FS pack).
+func NexusCategoryDefersUntilManifest(name string) bool {
+	return normalizeNexusCategory(name) == "clothing"
+}
 // Returns empty string when there is no suitable SDVM tag.
 func TagIDForNexusCategory(name string) string {
-	key := strings.ToLower(strings.TrimSpace(name))
-	key = strings.Join(strings.Fields(key), " ")
+	key := normalizeNexusCategory(name)
 	switch key {
 	case "user interface":
 		return "tag-ui"

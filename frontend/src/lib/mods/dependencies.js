@@ -98,12 +98,23 @@ export function resolveDependencies(mods) {
 function modIndexByUniqueID(mods) {
     const byUniqueID = new Map();
     for (const mod of mods) {
-        const uid = mod.manifest?.UniqueID;
-        if (!uid || byUniqueID.has(uid))
-            continue;
-        byUniqueID.set(uid, mod);
+        registerModInUniqueIDIndex(byUniqueID, mod.manifest?.UniqueID ?? "", mod);
+        for (const uid of mod.packSiblingUIDs ?? []) {
+            registerModInUniqueIDIndex(byUniqueID, uid, mod);
+        }
     }
     return byUniqueID;
+}
+function registerModInUniqueIDIndex(byUniqueID, uid, mod) {
+    if (!uid)
+        return;
+    const key = canonicalUniqueID(uid);
+    if (byUniqueID.has(key))
+        return;
+    byUniqueID.set(key, mod);
+}
+function canonicalUniqueID(uid) {
+    return uid.toLowerCase();
 }
 function resolveModIssues(mod, byUniqueID) {
     const selfID = mod.manifest?.UniqueID ?? "";

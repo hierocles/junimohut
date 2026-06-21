@@ -63,6 +63,9 @@ func (s *Store) CategoriesPath() string {
 func (s *Store) ModNamesPath() string {
 	return filepath.Join(s.dataDir, "mod-names.json")
 }
+func (s *Store) OverwriteMergesPath() string {
+	return filepath.Join(s.dataDir, "overwrite-merges.json")
+}
 func (s *Store) ConfigPath() string {
 	return filepath.Join(s.dataDir, "config.json")
 }

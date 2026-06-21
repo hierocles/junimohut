@@ -232,6 +232,49 @@ func TestPreviewInstallDependenciesSatisfiesSiblingDeps(t *testing.T) {
 	}
 }
 
+func TestResolveDependenciesCaseInsensitiveUniqueID(t *testing.T) {
+	must := require.New(t)
+
+	mods := []Mod{
+		providerMod("Lemurkat.EastScarp", "3.0.9"),
+		modWithDeps("Gervig91.AnimatedESFish", []ModDependency{
+			{UniqueID: "LemurKat.EastScarp", IsRequired: requiredBool(true)},
+		}, nil),
+	}
+	out := ResolveDependencies(mods)
+	must.Empty(out[1].DependencyIssues, "East Scarp casing mismatch should still satisfy dependency")
+}
+
+func TestResolveDependenciesPackSiblingDependency(t *testing.T) {
+	must := require.New(t)
+
+	pack := Mod{
+		ID:         "Camelus - Camel Expansion::pack:nexus:34843",
+		FolderPath: "Camelus - Camel Expansion",
+		Manifest: Manifest{
+			UniqueID: PackUniqueIDPrefix + "34843",
+			Name:     "Camelus - Camel Expansion",
+			Version:  "1.0.2",
+			Dependencies: []ModDependency{
+				{UniqueID: "ZoeyHoshi.Camelus"},
+				{UniqueID: "selph.ExtraAnimalConfig", IsRequired: requiredBool(true)},
+			},
+			ContentPackFor: &ContentPackFor{UniqueID: "DIGUS.ANIMALHUSBANDRYMOD"},
+		},
+		PackSiblingUIDs: []string{"ZoeyHoshi.Camelus", "ZoeyHoshi.Camelus_AHM"},
+		Enabled:         true,
+	}
+
+	mods := []Mod{
+		providerMod("selph.ExtraAnimalConfig", "1.0.0"),
+		pack,
+	}
+	out := ResolveDependencies(mods)
+	for _, issue := range out[1].DependencyIssues {
+		must.NotEqual("ZoeyHoshi.Camelus", issue.UniqueID, "intra-pack sibling should be satisfied")
+	}
+}
+
 func TestPreviewInstallDependenciesStillWarnsExternalDeps(t *testing.T) {
 	must := require.New(t)
 

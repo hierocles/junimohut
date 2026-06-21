@@ -186,7 +186,7 @@ func pickUpdateManifest(rootManifests []string, existingFolder string) (string, 
 		if err == nil {
 			for _, mf := range rootManifests {
 				incoming, err := ParseManifest(mf)
-				if err == nil && incoming.UniqueID == existing.UniqueID {
+				if err == nil && UniqueIDsEqual(incoming.UniqueID, existing.UniqueID) {
 					return mf, nil
 				}
 			}

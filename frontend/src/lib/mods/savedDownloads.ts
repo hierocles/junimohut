@@ -1,9 +1,15 @@
 import type { Mod } from "$lib/api/client";
-import { downloadUnknownModLabel } from "$lib/copy";
+import { downloadUnknownModLabel, pathBasename } from "$lib/copy";
 import { nexusModIdFromUpdateKey } from "$lib/mods/nexusTags";
 import type { DownloadRecord } from "../../../bindings/junimohut/internal/nexus/models.js";
 
 export type SavedDownloadRecord = DownloadRecord;
+
+function archiveFileLabel(record: SavedDownloadRecord): string {
+  const name =
+    record.fileName?.trim() || pathBasename(record.archivePath ?? "");
+  return name.replace(/\.(zip|7z|rar)$/i, "").trim();
+}
 
 export function resolveArchiveMod(
   record: SavedDownloadRecord,
@@ -11,7 +17,10 @@ export function resolveArchiveMod(
 ): { displayName: string; mod: Mod | null } {
   const uniqueId = record.uniqueId?.trim() ?? "";
   if (uniqueId) {
-    const mod = mods.find((m) => m.manifest?.UniqueID === uniqueId);
+    const mod = mods.find(
+      (m) =>
+        (m.manifest?.UniqueID ?? "").toLowerCase() === uniqueId.toLowerCase(),
+    );
     if (mod) return { displayName: mod.manifest.Name, mod };
   }
 
@@ -26,6 +35,12 @@ export function resolveArchiveMod(
     if (mod) return { displayName: mod.manifest.Name, mod };
   }
 
+  const modName = record.modName?.trim() ?? "";
+  if (modName) return { displayName: modName, mod: null };
+
+  const fileLabel = archiveFileLabel(record);
+  if (fileLabel) return { displayName: fileLabel, mod: null };
+
   return { displayName: downloadUnknownModLabel, mod: null };
 }
 
@@ -35,6 +50,7 @@ export function archiveSearchText(
 ): string {
   return [
     displayName,
+    record.modName ?? "",
     record.fileName ?? "",
     record.uniqueId ?? "",
     record.archivePath ?? "",

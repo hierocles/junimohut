@@ -21,6 +21,7 @@ export interface DownloadRecord {
     "archivePath": string;
     "nexusModId"?: number;
     "uniqueId"?: string;
+    "modName"?: string;
     "fileName"?: string;
     "downloadedAt": number;
 }

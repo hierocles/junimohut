@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	"junimohut/internal/httpclient"
 )
 
 // Nexus public API: 20,000 requests per 24-hour period per API key.
@@ -51,4 +53,14 @@ func requestError(context string, err error) error {
 func readAPIError(resp *http.Response, context string) error {
 	body, _ := io.ReadAll(resp.Body)
 	return apiError(resp.StatusCode, body, context)
+}
+
+// IsTransientNetworkError reports DNS/connectivity failures that may be temporary.
+func IsTransientNetworkError(err error) bool {
+	if httpclient.IsTransient(err) {
+		return true
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "could not resolve Nexus server") ||
+		strings.Contains(msg, "could not connect to Nexus")
 }

@@ -1,6 +1,16 @@
 <script lang="ts">
-  import type { Mod } from '$lib/api/client';
-  import { contextMenuReinstallSavedLabel, modRenameLabel } from '$lib/copy';
+  import type { Mod } from "$lib/api/client";
+  import {
+    contextMenuReinstallSavedLabel,
+    modRenameLabel,
+    contextMenuOpenFolder,
+    contextMenuOpenManifest,
+    contextMenuEditConfig,
+    contextMenuViewNexus,
+    contextMenuEndorse,
+    contextMenuDownloadUpdate,
+    contextMenuDeleteMod,
+  } from "$lib/copy";
 
   interface Props {
     mod: Mod | null;
@@ -15,34 +25,39 @@
   let menuEl = $state<HTMLDivElement | undefined>();
 
   const hasSavedDownload = $derived(!!mod?.savedDownloadPath?.trim());
-  const hasNexus = $derived(mod?.manifest?.UpdateKeys?.some((k) => k.startsWith('Nexus:')) ?? false);
+  const hasNexus = $derived(
+    mod?.manifest?.UpdateKeys?.some((k) => k.startsWith("Nexus:")) ?? false,
+  );
 
   const menuPos = $derived({
     left: Math.min(x, Math.max(0, window.innerWidth - 220)),
     top: Math.min(y, Math.max(0, window.innerHeight - 280)),
   });
 
-  const menuItems = $derived(
-    [
-      { action: 'openFolder', label: 'Open mod folder' },
-      { action: 'openManifest', label: 'Open manifest.json' },
-      { action: 'rename', label: modRenameLabel },
-      ...(hasSavedDownload
-        ? [{ action: 'reinstallSaved', label: contextMenuReinstallSavedLabel }]
-        : []),
-      ...(hasNexus
-        ? [
-            { action: 'openPage', label: 'View on Nexus Mods' },
-            { action: 'endorse', label: 'Endorse on Nexus Mods' },
-            { action: 'downloadUpdate', label: 'Download update' },
-          ]
-        : []),
-      { action: 'delete', label: 'Delete mod…', danger: true },
-    ] as const,
-  );
+  const menuItems = $derived([
+    { action: "openFolder", label: contextMenuOpenFolder },
+    { action: "openManifest", label: contextMenuOpenManifest },
+    ...(mod?.hasJsonFiles
+      ? [{ action: "editConfig", label: contextMenuEditConfig }]
+      : []),
+    { action: "rename", label: modRenameLabel },
+    ...(hasSavedDownload
+      ? [{ action: "reinstallSaved", label: contextMenuReinstallSavedLabel }]
+      : []),
+    ...(hasNexus
+      ? [
+          { action: "openPage", label: contextMenuViewNexus },
+          { action: "endorse", label: contextMenuEndorse },
+          { action: "downloadUpdate", label: contextMenuDownloadUpdate },
+        ]
+      : []),
+    { action: "delete", label: contextMenuDeleteMod, danger: true },
+  ] as const);
 
   function focusMenuItem(delta: number) {
-    const buttons = menuEl?.querySelectorAll<HTMLButtonElement>('button.overlay-menu-item');
+    const buttons = menuEl?.querySelectorAll<HTMLButtonElement>(
+      "button.overlay-menu-item",
+    );
     if (!buttons?.length) return;
     const current = document.activeElement;
     let idx = [...buttons].indexOf(current as HTMLButtonElement);
@@ -56,26 +71,30 @@
     if (!mod) return;
     queueMicrotask(() => menuEl?.focus());
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === "Escape") {
         e.preventDefault();
         onclose();
         return;
       }
-      if (e.key === 'ArrowDown') {
+      if (e.key === "ArrowDown") {
         e.preventDefault();
         focusMenuItem(1);
-      } else if (e.key === 'ArrowUp') {
+      } else if (e.key === "ArrowUp") {
         e.preventDefault();
         focusMenuItem(-1);
       }
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   });
 </script>
 
 {#if mod}
-  <div class="overlay-scrim overlay-scrim--menu" role="presentation" onclick={onclose}>
+  <div
+    class="overlay-scrim overlay-scrim--menu"
+    role="presentation"
+    onclick={onclose}
+  >
     <div
       bind:this={menuEl}
       class="overlay-menu-panel"

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Snippet } from 'svelte';
+  import type { Snippet } from "svelte";
 
   interface Props {
     open: boolean;
@@ -7,10 +7,13 @@
     message: string;
     confirmLabel?: string;
     cancelLabel?: string;
-    variant?: 'danger' | 'default';
+    variant?: "danger" | "default";
     busy?: boolean;
+    extraLabel?: string;
+    extraDisabled?: boolean;
     children?: Snippet;
     onconfirm: () => void | Promise<void>;
+    onextra?: () => void | Promise<void>;
     oncancel: () => void;
   }
 
@@ -18,12 +21,15 @@
     open,
     title,
     message,
-    confirmLabel = 'Confirm',
-    cancelLabel = 'Cancel',
-    variant = 'default',
+    confirmLabel = "Confirm",
+    cancelLabel = "Cancel",
+    variant = "default",
     busy = false,
+    extraLabel,
+    extraDisabled = false,
     children,
     onconfirm,
+    onextra,
     oncancel,
   }: Props = $props();
 
@@ -55,6 +61,10 @@
     e.preventDefault();
     handleCancel();
   }
+  async function handleExtra() {
+    if (busy || extraDisabled || !onextra) return;
+    await onextra();
+  }
 </script>
 
 <dialog
@@ -67,7 +77,9 @@
   }}
   oncancel={onDialogCancel}
 >
-  <div class="confirm-dialog-panel card app-panel border app-border layout-stack-sm motion-dialog-enter">
+  <div
+    class="confirm-dialog-panel card app-panel border app-border layout-stack-sm motion-dialog-enter"
+  >
     <h2 id="confirm-title" class="type-title text-surface-50">{title}</h2>
     <p id="confirm-message" class="type-ui type-meta type-prose">{message}</p>
     {#if children}
@@ -75,26 +87,40 @@
         {@render children()}
       </div>
     {/if}
-    <div class="confirm-dialog-actions flex" style="gap: var(--space-2);">
+    <div
+      class="confirm-dialog-actions"
+      class:confirm-dialog-actions--triple={!!extraLabel}
+    >
       <button
         bind:this={cancelBtn}
         type="button"
-        class="btn preset-tonal flex-1"
+        class="btn preset-tonal"
         disabled={busy}
         onclick={handleCancel}
       >
         {cancelLabel}
       </button>
+      {#if extraLabel}
+        <button
+          type="button"
+          class="btn preset-filled-primary-500"
+          disabled={busy || extraDisabled}
+          aria-busy={busy}
+          onclick={handleExtra}
+        >
+          {busy ? "Working…" : extraLabel}
+        </button>
+      {/if}
       <button
         type="button"
-        class="btn flex-1"
-        class:preset-filled-error-500={variant === 'danger'}
-        class:preset-filled-primary-500={variant !== 'danger'}
+        class="btn"
+        class:preset-filled-error-500={variant === "danger"}
+        class:preset-tonal={variant !== "danger"}
         disabled={busy}
         aria-busy={busy}
         onclick={handleConfirm}
       >
-        {busy ? 'Working…' : confirmLabel}
+        {busy ? "Working…" : confirmLabel}
       </button>
     </div>
   </div>
@@ -115,7 +141,8 @@
   }
 
   .confirm-dialog[open]::backdrop {
-    animation: motion-backdrop-enter var(--motion-medium) var(--ease-out-quart) both;
+    animation: motion-backdrop-enter var(--motion-medium) var(--ease-out-quart)
+      both;
   }
 
   .confirm-dialog-panel {
@@ -128,7 +155,14 @@
   }
 
   .confirm-dialog-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-2);
     padding-top: var(--space-2);
+  }
+
+  .confirm-dialog-actions--triple {
+    grid-template-columns: 1fr;
   }
 
   @media (prefers-reduced-motion: reduce) {

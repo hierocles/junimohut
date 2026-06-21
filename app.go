@@ -13,6 +13,7 @@ import (
 	"junimohut/internal/categories"
 	"junimohut/internal/config"
 	"junimohut/internal/modnames"
+	"junimohut/internal/modoverwrites"
 	"junimohut/internal/mods"
 	"junimohut/internal/nexus"
 	"junimohut/internal/platform"
@@ -30,8 +31,9 @@ type App struct {
 	store      *config.Store
 	profiles   *profiles.Service
 	categories *categories.Service
-	modNames   *modnames.Service
-	nexus         *nexus.Client
+	modNames        *modnames.Service
+	overwriteMerges *modoverwrites.Service
+	nexus           *nexus.Client
 	downloads     *nexus.DownloadManager
 	downloadIndex *nexus.DownloadIndex
 	scanner       *mods.Scanner
@@ -40,6 +42,15 @@ type App struct {
 	startSMAPI bool
 	initOnce   sync.Once
 	initErr    error
+
+	configEditorMu      sync.Mutex
+	configEditorWindow  *application.WebviewWindow
+	configEditorModID   string
+	configEditorDirty   bool
+
+	refreshMu          sync.Mutex
+	assembleMu         sync.Mutex
+	unmanagedModsCache []profiles.UnmanagedMod
 }
 
 func NewApp() *App {
@@ -121,6 +132,12 @@ func (a *App) startup(ctx context.Context) error {
 	}
 	a.modNames = modNamesSvc
 
+	overwriteSvc, err := modoverwrites.NewService(store.OverwriteMergesPath())
+	if err != nil {
+		return err
+	}
+	a.overwriteMerges = overwriteSvc
+
 	a.nexus = nexus.NewClient()
 	downloadIndex, err := nexus.NewDownloadIndex(store.DataDir(), store.DownloadsDir())
 	if err != nil {
@@ -128,6 +145,7 @@ func (a *App) startup(ctx context.Context) error {
 	}
 	a.downloadIndex = downloadIndex
 	a.downloads = nexus.NewDownloadManager(store.DownloadsDir(), downloadIndex)
+	go downloadIndex.ReconcileAsync()
 
 	_ = a.refreshMods()
 	_, _ = mods.NewWatcher(store.Get().ModsRoot, func() {
@@ -177,6 +195,9 @@ func (a *App) refreshCategoryIDs() {
 }
 
 func (a *App) refreshMods() error {
+	a.refreshMu.Lock()
+	defer a.refreshMu.Unlock()
+
 	settings := a.store.Get()
 	enabled := a.profiles.EnabledMods()
 	list, err := a.scanner.Scan(mods.ScanOptions{
@@ -196,9 +217,23 @@ func (a *App) refreshMods() error {
 			list[i].Manifest.Name,
 			mods.DisplayNameOfficial,
 		)
+		list[i].ContainsOverwrites = a.overwriteMerges.ContainsOverwrites(list[i].ID)
 	}
 	list = mods.DedupeByUniqueID(mods.DedupeByID(list))
 	list = mods.ResolveDependencies(list)
+
+	a.mu.Lock()
+	a.modsCache = list
+	a.mu.Unlock()
+
+	go a.finishModRefresh(list, enabled, settings)
+	return nil
+}
+
+func (a *App) finishModRefresh(list []mods.Mod, enabled map[string]bool, settings config.Settings) {
+	a.assembleMu.Lock()
+	defer a.assembleMu.Unlock()
+
 	for i := range list {
 		if list[i].IsCoreMod {
 			continue
@@ -212,8 +247,18 @@ func (a *App) refreshMods() error {
 	a.modsCache = list
 	a.mu.Unlock()
 
-	assembler := profiles.NewAssembler(config.ActiveModsDir(settings.GamePath), settings.ModsRoot)
-	return assembler.Assemble(list, enabled)
+	activeModsDir := config.ActiveModsDir(settings.GamePath)
+	assembler := profiles.NewAssembler(activeModsDir, settings.ModsRoot)
+	if err := assembler.Assemble(list, enabled); err != nil {
+		return
+	}
+	unmanaged, err := profiles.ScanUnmanagedMods(activeModsDir, settings.ModsRoot)
+	if err != nil {
+		return
+	}
+	a.mu.Lock()
+	a.unmanagedModsCache = unmanaged
+	a.mu.Unlock()
 }
 
 // --- Settings ---
@@ -280,18 +325,6 @@ func (a *App) ListMods(search, hideDisabled string) []mods.Mod {
 	a.mu.RLock()
 	list := append([]mods.Mod{}, a.modsCache...)
 	a.mu.RUnlock()
-
-	for i := range list {
-		list[i].CategoryIDs = a.categories.ModCategoryIDs(list[i].ID)
-		list[i].CustomName = mods.EffectiveCustomName(
-			a.modNames.Get(list[i].ID),
-			list[i].FolderPath,
-			list[i].Manifest.Name,
-			mods.DisplayNameOfficial,
-		)
-	}
-
-	list = mods.DedupeByUniqueID(mods.DedupeByID(list))
 	return mods.FilterMods(list, search, hideDisabled)
 }
 
@@ -371,7 +404,7 @@ func (a *App) PreviewInstallNames(archivePaths []string) ([]mods.InstallNamePrev
 	return mods.PreviewInstallNames(archivePaths)
 }
 
-func (a *App) InstallMods(archivePaths []string, useFolderDisplayNames bool) ([]mods.InstallResult, error) {
+func (a *App) InstallMods(archivePaths []string, useFolderDisplayNames bool, overwriteTargets map[string]string) ([]mods.InstallResult, error) {
 	if err := a.ensureInit(); err != nil {
 		return nil, err
 	}
@@ -379,6 +412,27 @@ func (a *App) InstallMods(archivePaths []string, useFolderDisplayNames bool) ([]
 	installer := mods.NewInstaller(settings.ModsRoot)
 	var all []mods.InstallResult
 	for _, p := range archivePaths {
+		targetFolder := ""
+		if overwriteTargets != nil {
+			targetFolder = overwriteTargets[p]
+		}
+		if targetFolder != "" {
+			result, err := installer.MergeArchiveIntoMod(p, targetFolder)
+			if err != nil {
+				all = append(all, mods.InstallResult{Error: err.Error()})
+				continue
+			}
+			all = append(all, result)
+			if result.ModID != "" {
+				_ = a.overwriteMerges.RecordMerge(result.ModID)
+				a.downloadIndex.RecordInstall(p, a.modUniqueIDFor(result.ModID), 0)
+			}
+			if settings.AutoEnableOnInstall && result.ModID != "" {
+				_ = a.profiles.SetModEnabled(result.ModID, true)
+			}
+			continue
+		}
+
 		results, err := installer.InstallArchive(p)
 		if err != nil {
 			all = append(all, mods.InstallResult{Error: err.Error()})
@@ -422,6 +476,7 @@ func (a *App) DeleteMod(folderPath string, deleteArchive bool) error {
 	}
 	if mod, ok := a.modByFolderPath(folderPath); ok {
 		_ = a.modNames.Delete(mod.ID)
+		_ = a.overwriteMerges.Delete(mod.ID)
 	}
 	settings := a.store.Get()
 	installer := mods.NewInstaller(settings.ModsRoot)
@@ -442,6 +497,7 @@ func (a *App) DeleteMods(folderPaths []string, deleteArchives bool) (mods.Delete
 	for _, folderPath := range folderPaths {
 		if mod, ok := a.modByFolderPath(folderPath); ok {
 			_ = a.modNames.Delete(mod.ID)
+			_ = a.overwriteMerges.Delete(mod.ID)
 		}
 	}
 	settings := a.store.Get()
@@ -736,7 +792,7 @@ func (a *App) CheckModUpdates() ([]smapi.ModUpdateResult, error) {
 			UpdateKeys: m.Manifest.UpdateKeys,
 		})
 	}
-	results, err := smapi.CheckModUpdates(requests)
+	results, err := smapi.CheckModUpdates(requests, a.GetSMAPIVersion())
 	if err != nil {
 		return nil, err
 	}
@@ -793,6 +849,49 @@ func (a *App) ModsWithDependencyIssues() int {
 	return n
 }
 
+func (a *App) ListUnmanagedMods() []profiles.UnmanagedMod {
+	if err := a.ensureInit(); err != nil {
+		return nil
+	}
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	out := make([]profiles.UnmanagedMod, len(a.unmanagedModsCache))
+	copy(out, a.unmanagedModsCache)
+	return out
+}
+
+func (a *App) UnmanagedModCount() int {
+	if err := a.ensureInit(); err != nil {
+		return 0
+	}
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return len(a.unmanagedModsCache)
+}
+
+func (a *App) OpenActiveModsFolder() error {
+	if err := a.ensureInit(); err != nil {
+		return err
+	}
+	settings := a.store.Get()
+	activeModsDir := config.ActiveModsDir(settings.GamePath)
+	if activeModsDir == "" {
+		return fmt.Errorf("game path not configured")
+	}
+	return platform.OpenPath(activeModsDir)
+}
+
+func (a *App) PreviewInstallOverwrites(archivePaths []string) ([]mods.InstallOverwritePreview, error) {
+	if err := a.ensureInit(); err != nil {
+		return nil, err
+	}
+	settings := a.store.Get()
+	a.mu.RLock()
+	library := append([]mods.Mod{}, a.modsCache...)
+	a.mu.RUnlock()
+	return mods.PreviewInstallOverwrites(archivePaths, settings.ModsRoot, library)
+}
+
 func (a *App) PreviewInstallDependencies(archivePaths []string) ([]mods.InstallDependencyPreview, error) {
 	if err := a.ensureInit(); err != nil {
 		return nil, err
@@ -819,6 +918,20 @@ func (a *App) ValidateNexusAPIKey() (bool, error) {
 	return a.nexus.ValidateKey()
 }
 
+func (a *App) ProbeNexusAPIKey() bool {
+	if err := a.ensureInit(); err != nil {
+		return false
+	}
+	if !a.nexus.IsConnected() {
+		return false
+	}
+	ok, err := a.nexus.ValidateKey()
+	if err != nil && nexus.IsTransientNetworkError(err) {
+		return true
+	}
+	return ok && err == nil
+}
+
 func (a *App) IsNexusConnected() bool {
 	if err := a.ensureInit(); err != nil {
 		return false
@@ -826,13 +939,10 @@ func (a *App) IsNexusConnected() bool {
 	return a.nexus.IsConnected()
 }
 
-// GetNexusSuggestedTags maps Nexus mod page categories to existing user tag IDs.
-func (a *App) GetNexusSuggestedTags(modIDs []int) ([]string, error) {
+// GetInstallSuggestedTags maps install archives and Nexus mod categories to user tag IDs.
+func (a *App) GetInstallSuggestedTags(archivePaths []string, modIDs []int) ([]string, error) {
 	if err := a.ensureInit(); err != nil {
 		return nil, err
-	}
-	if !a.nexus.IsConnected() || len(modIDs) == 0 {
-		return []string{}, nil
 	}
 
 	knownTags := map[string]bool{}
@@ -840,24 +950,41 @@ func (a *App) GetNexusSuggestedTags(modIDs []int) ([]string, error) {
 		knownTags[c.ID] = true
 	}
 
-	seen := map[string]bool{}
-	var out []string
-	for _, modID := range modIDs {
-		if modID <= 0 {
-			continue
-		}
-		name, err := a.nexus.CategoryNameForMod(modID)
-		if err != nil || name == "" {
-			continue
-		}
-		tagID := categories.TagIDForNexusCategory(name)
-		if tagID == "" || seen[tagID] || !knownTags[tagID] {
-			continue
-		}
-		seen[tagID] = true
-		out = append(out, tagID)
+	fashionSense, err := mods.ArchivesContainFashionSense(archivePaths)
+	if err != nil {
+		return nil, err
 	}
-	return out, nil
+
+	var nexusTagIDs []string
+	hasArchives := len(archivePaths) > 0
+	if a.nexus.IsConnected() {
+		seen := map[string]bool{}
+		for _, modID := range modIDs {
+			if modID <= 0 {
+				continue
+			}
+			name, err := a.nexus.CategoryNameForMod(modID)
+			if err != nil || name == "" {
+				continue
+			}
+			tagID := categories.TagIDForNexusCategory(name)
+			if tagID == "" || seen[tagID] || !knownTags[tagID] {
+				continue
+			}
+			if !hasArchives && categories.NexusCategoryDefersUntilManifest(name) {
+				continue
+			}
+			seen[tagID] = true
+			nexusTagIDs = append(nexusTagIDs, tagID)
+		}
+	}
+
+	return categories.MergeInstallSuggestedTags(nexusTagIDs, fashionSense, knownTags), nil
+}
+
+// GetNexusSuggestedTags maps Nexus mod page categories to existing user tag IDs.
+func (a *App) GetNexusSuggestedTags(modIDs []int) ([]string, error) {
+	return a.GetInstallSuggestedTags(nil, modIDs)
 }
 
 func (a *App) EndorseMod(updateKey, version string) error {
@@ -882,6 +1009,7 @@ func (a *App) ListSavedDownloads() []nexus.DownloadRecord {
 	if err := a.ensureInit(); err != nil {
 		return nil
 	}
+	a.downloadIndex.Reconcile()
 	return a.downloadIndex.List()
 }
 

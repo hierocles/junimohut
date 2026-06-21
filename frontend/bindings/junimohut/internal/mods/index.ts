@@ -8,10 +8,15 @@ export type {
     InstallDependencyPreview,
     InstallModNamePreview,
     InstallNamePreview,
+    InstallOverwriteCandidate,
+    InstallOverwritePreview,
     InstallResult,
     Manifest,
     Mod,
+    ModConfigView,
     ModDependency,
     ModGroup,
+    ModJsonFileNode,
+    ModJsonSummary,
     UpdateStatus
 } from "./models.js";

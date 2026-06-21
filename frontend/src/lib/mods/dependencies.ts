@@ -75,12 +75,20 @@ function nexusModIDFromManifest(mod: Mod): string {
   return "";
 }
 
+function canonicalUniqueID(uid: string): string {
+  return uid.toLowerCase();
+}
+
+function uniqueIDsEqual(a: string, b: string): boolean {
+  return a.localeCompare(b, undefined, { sensitivity: "accent" }) === 0;
+}
+
 function collectDependencyEntries(mod: Mod): DepEntry[] {
   const seen = new Map<string, DepEntry>();
 
   const contentPack = mod.manifest?.ContentPackFor;
   if (contentPack?.UniqueID) {
-    seen.set(contentPack.UniqueID, {
+    seen.set(canonicalUniqueID(contentPack.UniqueID), {
       uniqueID: contentPack.UniqueID,
       minimumVersion: contentPack.MinimumVersion ?? "",
       isRequired: true,
@@ -91,9 +99,10 @@ function collectDependencyEntries(mod: Mod): DepEntry[] {
   for (const dep of mod.manifest?.Dependencies ?? []) {
     if (!dep.UniqueID) continue;
     const required = dep.IsRequired ?? true;
-    const existing = seen.get(dep.UniqueID);
+    const key = canonicalUniqueID(dep.UniqueID);
+    const existing = seen.get(key);
     if (!existing) {
-      seen.set(dep.UniqueID, {
+      seen.set(key, {
         uniqueID: dep.UniqueID,
         minimumVersion: dep.MinimumVersion ?? "",
         isRequired: required,
@@ -148,11 +157,23 @@ export function resolveDependencies(mods: Mod[]): Mod[] {
 function modIndexByUniqueID(mods: Mod[]): Map<string, Mod> {
   const byUniqueID = new Map<string, Mod>();
   for (const mod of mods) {
-    const uid = mod.manifest?.UniqueID;
-    if (!uid || byUniqueID.has(uid)) continue;
-    byUniqueID.set(uid, mod);
+    registerModInUniqueIDIndex(byUniqueID, mod.manifest?.UniqueID ?? "", mod);
+    for (const uid of mod.packSiblingUIDs ?? []) {
+      registerModInUniqueIDIndex(byUniqueID, uid, mod);
+    }
   }
   return byUniqueID;
+}
+
+function registerModInUniqueIDIndex(
+  byUniqueID: Map<string, Mod>,
+  uid: string,
+  mod: Mod,
+): void {
+  if (!uid) return;
+  const key = canonicalUniqueID(uid);
+  if (byUniqueID.has(key)) return;
+  byUniqueID.set(key, mod);
 }
 
 function resolveModIssues(
@@ -163,9 +184,9 @@ function resolveModIssues(
   const issues: NonNullable<Mod["dependencyIssues"]> = [];
 
   for (const entry of collectDependencyEntries(mod)) {
-    if (!entry.uniqueID || entry.uniqueID === selfID) continue;
+    if (!entry.uniqueID || uniqueIDsEqual(entry.uniqueID, selfID)) continue;
 
-    const provider = byUniqueID.get(entry.uniqueID);
+    const provider = byUniqueID.get(canonicalUniqueID(entry.uniqueID));
     if (!provider) {
       if (entry.isRequired) {
         issues.push(newDependencyIssue(entry, "missing"));
@@ -225,8 +246,8 @@ export function dependencyRowsForMod(
       };
     }
 
-    const provider = byUniqueID.get(entry.uniqueID);
-    if (provider && entry.uniqueID !== selfID) {
+    const provider = byUniqueID.get(canonicalUniqueID(entry.uniqueID));
+    if (provider && !uniqueIDsEqual(entry.uniqueID, selfID)) {
       return {
         uniqueID: entry.uniqueID,
         minimumVersion: entry.minimumVersion,
@@ -260,7 +281,7 @@ export function dependentRowsForMod(mod: Mod, allMods: Mod[]): DependentRow[] {
     if (candidate.id === mod.id) continue;
 
     for (const entry of collectDependencyEntries(candidate)) {
-      if (entry.uniqueID !== providerID) continue;
+      if (!uniqueIDsEqual(entry.uniqueID, providerID)) continue;
       rows.push({
         modId: candidate.id,
         name: candidate.manifest?.Name ?? candidate.folderPath,

@@ -23,10 +23,11 @@ func DedupeByUniqueID(list []Mod) []Mod {
 		if uid == "" {
 			uid = m.ID
 		}
-		if seen[uid] {
+		key := CanonicalUniqueID(uid)
+		if seen[key] {
 			continue
 		}
-		seen[uid] = true
+		seen[key] = true
 		out = append(out, m)
 	}
 	return out

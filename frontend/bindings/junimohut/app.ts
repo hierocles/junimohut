@@ -67,6 +67,10 @@ export function CompleteSetup(gamePath: string, smapiPath: string, modsRoot: str
     return $Call.ByID(507086583, gamePath, smapiPath, modsRoot);
 }
 
+export function ConfigEditorIsDirty(): $CancellablePromise<boolean> {
+    return $Call.ByID(4000957798);
+}
+
 export function CreateCategory(name: string, color: string): $CancellablePromise<categories$0.Category> {
     return $Call.ByID(4163536593, name, color);
 }
@@ -115,6 +119,21 @@ export function EndorseMod(updateKey: string, version: string): $CancellableProm
 }
 
 /**
+ * GetInstallSuggestedTags maps install archives and Nexus mod categories to user tag IDs.
+ */
+export function GetInstallSuggestedTags(archivePaths: string[] | null, modIDs: number[] | null): $CancellablePromise<string[] | null> {
+    return $Call.ByID(2015195352, archivePaths, modIDs);
+}
+
+export function GetModConfig(modID: string): $CancellablePromise<mods$0.ModConfigView> {
+    return $Call.ByID(3450649103, modID);
+}
+
+export function GetModConfigFile(modID: string, relPath: string): $CancellablePromise<mods$0.ModConfigView> {
+    return $Call.ByID(664102657, modID, relPath);
+}
+
+/**
  * GetNexusSuggestedTags maps Nexus mod page categories to existing user tag IDs.
  */
 export function GetNexusSuggestedTags(modIDs: number[] | null): $CancellablePromise<string[] | null> {
@@ -137,8 +156,8 @@ export function HandleNXMURL(url: string): $CancellablePromise<string> {
     return $Call.ByID(1544860105, url);
 }
 
-export function InstallMods(archivePaths: string[] | null, useFolderDisplayNames: boolean): $CancellablePromise<mods$0.InstallResult[] | null> {
-    return $Call.ByID(2855435565, archivePaths, useFolderDisplayNames);
+export function InstallMods(archivePaths: string[] | null, useFolderDisplayNames: boolean, overwriteTargets: { [_ in string]?: string } | null): $CancellablePromise<mods$0.InstallResult[] | null> {
+    return $Call.ByID(2855435565, archivePaths, useFolderDisplayNames, overwriteTargets);
 }
 
 export function InstallSMAPI(): $CancellablePromise<void> {
@@ -165,8 +184,16 @@ export function ListModGroups(search: string, hideDisabled: string): $Cancellabl
     return $Call.ByID(3343994023, search, hideDisabled);
 }
 
+export function ListModJsonFiles(modID: string): $CancellablePromise<mods$0.ModJsonFileNode[] | null> {
+    return $Call.ByID(407545920, modID);
+}
+
 export function ListMods(search: string, hideDisabled: string): $CancellablePromise<mods$0.Mod[] | null> {
     return $Call.ByID(4207468124, search, hideDisabled);
+}
+
+export function ListModsWithJsonFiles(): $CancellablePromise<mods$0.ModJsonSummary[] | null> {
+    return $Call.ByID(489525353);
 }
 
 export function ListProfiles(): $CancellablePromise<profiles$0.Profile[] | null> {
@@ -177,6 +204,10 @@ export function ListSavedDownloads(): $CancellablePromise<nexus$0.DownloadRecord
     return $Call.ByID(2754041041);
 }
 
+export function ListUnmanagedMods(): $CancellablePromise<profiles$0.UnmanagedMod[] | null> {
+    return $Call.ByID(2868957870);
+}
+
 export function ModsReadyToUpdate(): $CancellablePromise<number> {
     return $Call.ByID(3040771715);
 }
@@ -185,8 +216,28 @@ export function ModsWithDependencyIssues(): $CancellablePromise<number> {
     return $Call.ByID(2187278053);
 }
 
+export function OpenActiveModsFolder(): $CancellablePromise<void> {
+    return $Call.ByID(506090982);
+}
+
 export function OpenManifest(folderPath: string): $CancellablePromise<void> {
     return $Call.ByID(1612629304, folderPath);
+}
+
+export function OpenModConfigEditor(modID: string): $CancellablePromise<void> {
+    return $Call.ByID(2547693824, modID);
+}
+
+export function OpenModConfigEditorFile(modID: string, relPath: string): $CancellablePromise<void> {
+    return $Call.ByID(2531750966, modID, relPath);
+}
+
+export function OpenModConfigExternal(modID: string): $CancellablePromise<void> {
+    return $Call.ByID(2524124322, modID);
+}
+
+export function OpenModConfigExternalFile(modID: string, relPath: string): $CancellablePromise<void> {
+    return $Call.ByID(850994244, modID, relPath);
 }
 
 export function OpenModFolder(folderPath: string): $CancellablePromise<void> {
@@ -199,6 +250,14 @@ export function PreviewInstallDependencies(archivePaths: string[] | null): $Canc
 
 export function PreviewInstallNames(archivePaths: string[] | null): $CancellablePromise<mods$0.InstallNamePreview[] | null> {
     return $Call.ByID(471547458, archivePaths);
+}
+
+export function PreviewInstallOverwrites(archivePaths: string[] | null): $CancellablePromise<mods$0.InstallOverwritePreview[] | null> {
+    return $Call.ByID(2817882952, archivePaths);
+}
+
+export function ProbeNexusAPIKey(): $CancellablePromise<boolean> {
+    return $Call.ByID(715704515);
 }
 
 /**
@@ -215,6 +274,10 @@ export function RegisterNXMProtocol(): $CancellablePromise<void> {
     return $Call.ByID(2861492769);
 }
 
+export function ReloadConfigEditor(): $CancellablePromise<void> {
+    return $Call.ByID(3783150851);
+}
+
 export function RenameProfile(id: string, name: string): $CancellablePromise<void> {
     return $Call.ByID(1067637764, id, name);
 }
@@ -225,6 +288,14 @@ export function ReorderCategories(ids: string[] | null): $CancellablePromise<voi
 
 export function RevealArchiveInFileManager(archivePath: string): $CancellablePromise<void> {
     return $Call.ByID(269732774, archivePath);
+}
+
+export function SaveModConfig(modID: string, content: string): $CancellablePromise<void> {
+    return $Call.ByID(1428347986, modID, content);
+}
+
+export function SaveModConfigFile(modID: string, relPath: string, content: string): $CancellablePromise<void> {
+    return $Call.ByID(1541890804, modID, relPath, content);
 }
 
 export function SaveProfile(): $CancellablePromise<void> {
@@ -251,6 +322,10 @@ export function SetCategoryVisibility(id: string, visible: boolean): $Cancellabl
     return $Call.ByID(4161271547, id, visible);
 }
 
+export function SetConfigEditorDirty(dirty: boolean): $CancellablePromise<void> {
+    return $Call.ByID(3373641844, dirty);
+}
+
 export function SetModCustomName(modID: string, customName: string): $CancellablePromise<void> {
     return $Call.ByID(193317225, modID, customName);
 }
@@ -269,6 +344,10 @@ export function Startup(): $CancellablePromise<void> {
 
 export function UnassignModFromCategory(categoryID: string, modID: string): $CancellablePromise<void> {
     return $Call.ByID(3431169981, categoryID, modID);
+}
+
+export function UnmanagedModCount(): $CancellablePromise<number> {
+    return $Call.ByID(2984764492);
 }
 
 export function UpdateCategory(id: string, name: string, color: string, visible: boolean, sortOrder: number): $CancellablePromise<void> {

@@ -139,6 +139,27 @@ func TestParseManifestTrailingComma(t *testing.T) {
 	must.Equal("Pathoschild.ContentPatcher", m.ContentPackFor.UniqueID)
 }
 
+func TestParseManifestNumericUpdateKeys(t *testing.T) {
+	must := require.New(t)
+
+	dir := t.TempDir()
+	manifest := `{
+		"Name": "[AT] Pet Facelift",
+		"Author": "siamece",
+		"Version": "1.1.0",
+		"UniqueID": "siamece.AT.PetFacelift",
+		"UpdateKeys": [9097],
+		"ContentPackFor": {
+			"UniqueID": "PeacefulEnd.AlternativeTextures",
+			"MinimumVersion": "3.5.0"
+		}
+	}`
+	must.NoError(os.WriteFile(filepath.Join(dir, "manifest.json"), []byte(manifest), 0o644))
+	m, err := ParseManifest(filepath.Join(dir, "manifest.json"))
+	must.NoError(err)
+	must.Equal([]string{"Nexus:9097"}, m.UpdateKeys)
+}
+
 func TestModID(t *testing.T) {
 	must := require.New(t)
 

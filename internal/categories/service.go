@@ -40,8 +40,35 @@ func NewService(path string) (*Service, error) {
 		if err := s.save(); err != nil {
 			return nil, err
 		}
+		return s, nil
+	}
+	if s.mergeMissingDefaults() {
+		if err := s.save(); err != nil {
+			return nil, err
+		}
 	}
 	return s, nil
+}
+
+// mergeMissingDefaults appends default categories whose stable IDs are absent.
+// Skips when the store is empty so an intentional empty file is preserved.
+func (s *Service) mergeMissingDefaults() bool {
+	if len(s.categories) == 0 {
+		return false
+	}
+	existing := map[string]bool{}
+	for _, c := range s.categories {
+		existing[c.ID] = true
+	}
+	var added bool
+	for _, def := range DefaultCategories() {
+		if existing[def.ID] {
+			continue
+		}
+		s.categories = append(s.categories, def)
+		added = true
+	}
+	return added
 }
 
 func (s *Service) List() []Category {

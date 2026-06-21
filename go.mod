@@ -9,6 +9,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/nwaples/rardecode/v2 v2.2.5
 	github.com/stretchr/testify v1.11.1
+	github.com/tidwall/jsonc v0.3.3
 	github.com/wailsapp/wails/v3 v3.0.0-alpha2.103
 	github.com/zalando/go-keyring v0.2.8
 	golang.org/x/sys v0.43.0

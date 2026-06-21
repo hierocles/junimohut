@@ -54,7 +54,76 @@ func decodeJSONManifest(data []byte, m *Manifest) error {
 	data = bytes.TrimPrefix(data, utf8BOM)
 	data = stripJSONComments(data)
 	data = stripJSONTrailingCommas(data)
-	return json.Unmarshal(data, m)
+
+	type manifestAlias Manifest
+	aux := &struct {
+		UpdateKeys json.RawMessage `json:"UpdateKeys"`
+		*manifestAlias
+	}{
+		manifestAlias: (*manifestAlias)(m),
+	}
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	if len(aux.UpdateKeys) > 0 && !bytes.Equal(aux.UpdateKeys, []byte("null")) {
+		keys, err := parseFlexibleUpdateKeys(aux.UpdateKeys)
+		if err != nil {
+			return err
+		}
+		m.UpdateKeys = keys
+	}
+	return nil
+}
+
+// parseFlexibleUpdateKeys accepts SMAPI UpdateKeys arrays containing strings and/or numeric Nexus IDs.
+func parseFlexibleUpdateKeys(data []byte) ([]string, error) {
+	var stringsOnly []string
+	if err := json.Unmarshal(data, &stringsOnly); err == nil {
+		out := make([]string, 0, len(stringsOnly))
+		for _, key := range stringsOnly {
+			out = append(out, normalizeUpdateKey(key))
+		}
+		return out, nil
+	}
+
+	var raw []json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(raw))
+	for _, item := range raw {
+		var key string
+		if err := json.Unmarshal(item, &key); err == nil {
+			out = append(out, normalizeUpdateKey(key))
+			continue
+		}
+		var number json.Number
+		if err := json.Unmarshal(item, &number); err == nil {
+			id, err := number.Int64()
+			if err != nil || id <= 0 {
+				return nil, fmt.Errorf("invalid UpdateKeys number %q", number)
+			}
+			out = append(out, fmt.Sprintf("Nexus:%d", id))
+			continue
+		}
+		return nil, fmt.Errorf("invalid UpdateKeys entry %s", string(item))
+	}
+	return out, nil
+}
+
+func normalizeUpdateKey(key string) string {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return key
+	}
+	if strings.Contains(key, ":") {
+		return key
+	}
+	var id int
+	if _, err := fmt.Sscanf(key, "%d", &id); err == nil && id > 0 {
+		return fmt.Sprintf("Nexus:%d", id)
+	}
+	return key
 }
 
 // stripJSONComments removes // line comments and /* block comments */ from JSON-like data.
@@ -179,4 +248,15 @@ func ParseManifest(path string) (Manifest, error) {
 // ModID generates a stable ID from folder path and unique ID.
 func ModID(folderPath, uniqueID string) string {
 	return fmt.Sprintf("%s::%s", folderPath, uniqueID)
+}
+
+// CanonicalUniqueID returns the normalized form used for SMAPI UniqueID lookup.
+// SMAPI treats UniqueIDs as case-insensitive.
+func CanonicalUniqueID(uid string) string {
+	return strings.ToLower(uid)
+}
+
+// UniqueIDsEqual reports whether two SMAPI UniqueIDs refer to the same mod.
+func UniqueIDsEqual(a, b string) bool {
+	return strings.EqualFold(a, b)
 }

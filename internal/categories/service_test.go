@@ -1,6 +1,7 @@
 package categories
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -15,13 +16,39 @@ func TestNewService_SeedsDefaultsWhenMissing(t *testing.T) {
 	svc, err := NewService(path)
 	must.NoError(err)
 	cats := svc.List()
-	must.Len(cats, 12)
+	must.Len(cats, 13)
 	must.Equal("tag-qol", cats[0].ID)
 	must.Equal("Quality of Life", cats[0].Name)
-	must.Equal("tag-cheats", cats[11].ID)
-	must.Equal("Cheats & Unbalanced", cats[11].Name)
+	must.Equal("tag-fashion-sense", cats[12].ID)
+	must.Equal("Fashion Sense", cats[12].Name)
 	_, err = os.Stat(path)
 	must.NoError(err)
+}
+
+func TestNewService_MergesMissingDefaults(t *testing.T) {
+	must := require.New(t)
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "categories.json")
+	legacy := store{
+		Categories: DefaultCategories()[:12],
+	}
+	data, err := json.MarshalIndent(legacy, "", "  ")
+	must.NoError(err)
+	must.NoError(os.WriteFile(path, data, 0o644))
+
+	svc, err := NewService(path)
+	must.NoError(err)
+	cats := svc.List()
+	must.Len(cats, 13)
+	var found bool
+	for _, c := range cats {
+		if c.ID == "tag-fashion-sense" {
+			found = true
+			must.Equal("Fashion Sense", c.Name)
+		}
+	}
+	must.True(found)
 }
 
 func TestNewService_DoesNotReseedEmptyFile(t *testing.T) {

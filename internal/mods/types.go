@@ -61,6 +61,26 @@ type InstallNamePreview struct {
 	NeedsDisplayNameChoice bool                    `json:"needsDisplayNameChoice"`
 }
 
+// InstallOverwriteCandidate describes a mod folder that may receive merged patch files.
+type InstallOverwriteCandidate struct {
+	FolderPath   string   `json:"folderPath"`
+	ModName      string   `json:"modName"`
+	UniqueID     string   `json:"uniqueID"`
+	MatchedFiles int      `json:"matchedFiles"`
+	TotalFiles   int      `json:"totalFiles"`
+	SamplePaths  []string `json:"samplePaths,omitempty"`
+}
+
+// InstallOverwritePreview describes a no-manifest archive that may overwrite files in an installed mod.
+type InstallOverwritePreview struct {
+	ArchivePath     string                      `json:"archivePath"`
+	FileCount       int                         `json:"fileCount"`
+	Candidates      []InstallOverwriteCandidate `json:"candidates"`
+	SuggestedTarget string                      `json:"suggestedTarget,omitempty"`
+	State           string                      `json:"state"` // blocked | confirm
+	BlockReason     string                      `json:"blockReason,omitempty"`
+}
+
 // UpdateStatus describes mod update state.
 type UpdateStatus struct {
 	State         string `json:"state"` // current, update_available, incompatible, unofficial
@@ -80,14 +100,18 @@ type Mod struct {
 	GroupKey     string       `json:"groupKey"`
 	GroupLabel   string       `json:"groupLabel"`
 	UpdateStatus UpdateStatus `json:"updateStatus"`
-	HasConfig    bool         `json:"hasConfig"`
+	HasConfig     bool         `json:"hasConfig"`
+	HasJsonFiles  bool         `json:"hasJsonFiles"`
+	JsonFileCount int          `json:"jsonFileCount"`
 	IsCoreMod    bool         `json:"isCoreMod"`
 	InstallTime            int64             `json:"installTime"`
 	LastUpdated            int64             `json:"lastUpdated"`
 	DependencyIssues       []DependencyIssue `json:"dependencyIssues"`
 	MissingDependencyCount int               `json:"missingDependencyCount"`
+	PackSiblingUIDs        []string          `json:"packSiblingUIDs,omitempty"`
 	SavedDownloadPath      string            `json:"savedDownloadPath,omitempty"`
 	CustomName             string            `json:"customName,omitempty"`
+	ContainsOverwrites     bool              `json:"containsOverwrites"`
 }
 
 // ModGroup is a collection of mods for UI grouping.

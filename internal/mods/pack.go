@@ -98,6 +98,8 @@ func buildPackMod(container string, children []Mod, modsRoot string, enabled map
 	childIDs := make([]string, len(children))
 	var maxInstall, maxUpdated int64
 	hasConfig := false
+	hasJsonFiles := false
+	jsonFileCount := 0
 	for i, c := range children {
 		childIDs[i] = c.ID
 		if c.InstallTime > maxInstall {
@@ -109,12 +111,23 @@ func buildPackMod(container string, children []Mod, modsRoot string, enabled map
 		if c.HasConfig {
 			hasConfig = true
 		}
+		if c.HasJsonFiles {
+			hasJsonFiles = true
+		}
+		jsonFileCount += c.JsonFileCount
 	}
 
 	packUID := PackUniqueIDFromManifest(first.Manifest)
 	name := PackDisplayName(filepath.Base(container))
 	abs := filepath.Join(modsRoot, filepath.FromSlash(container))
 	packID := ModID(container, packUID)
+
+	siblingUIDs := make([]string, 0, len(children))
+	for _, c := range children {
+		if uid := c.Manifest.UniqueID; uid != "" {
+			siblingUIDs = append(siblingUIDs, uid)
+		}
+	}
 
 	manifest := first.Manifest
 	manifest.Name = name
@@ -125,16 +138,19 @@ func buildPackMod(container string, children []Mod, modsRoot string, enabled map
 	groupKey, groupLabel := groupForMod(container, manifest, GroupingFolderCondensed)
 
 	return Mod{
-		ID:           packID,
-		FolderPath:   container,
-		AbsolutePath: abs,
-		Manifest:     manifest,
-		Enabled:      resolvePackEnabled(packID, childIDs, enabled),
-		GroupKey:     groupKey,
-		GroupLabel:   groupLabel,
-		HasConfig:    hasConfig,
-		InstallTime:  maxInstall,
-		LastUpdated:  maxUpdated,
+		ID:              packID,
+		FolderPath:      container,
+		AbsolutePath:    abs,
+		Manifest:        manifest,
+		Enabled:         resolvePackEnabled(packID, childIDs, enabled),
+		GroupKey:        groupKey,
+		GroupLabel:      groupLabel,
+		HasConfig:       hasConfig,
+		HasJsonFiles:    hasJsonFiles,
+		JsonFileCount:   jsonFileCount,
+		InstallTime:     maxInstall,
+		LastUpdated:     maxUpdated,
+		PackSiblingUIDs: siblingUIDs,
 	}
 }
 

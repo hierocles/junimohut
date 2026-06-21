@@ -10,3 +10,12 @@ export interface Profile {
     "enabledMods": { [_ in string]?: boolean } | null;
     "isActive": boolean;
 }
+
+/**
+ * UnmanagedMod describes a folder in the game's Mods directory that Junimo Hut does not manage.
+ */
+export interface UnmanagedMod {
+    "folderName": string;
+    "name": string;
+    "uniqueID"?: string;
+}

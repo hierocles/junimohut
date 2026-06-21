@@ -482,6 +482,7 @@ export function getMockRefreshData(search, hideDisabled) {
         smapiVersion: "4.0.0",
         readyCount,
         dependencyIssueCount,
+        unmanagedMods: [],
     };
 }
 export function getMockInstallDependencyPreview(paths) {

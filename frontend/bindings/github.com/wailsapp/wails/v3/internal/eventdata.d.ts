@@ -8,6 +8,8 @@ import type { Events } from "@wailsio/runtime";
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
+            "config-editor-open-mod": string;
+            "config-editor-reload": boolean;
             "mods-changed": boolean;
             "nexus-download-ready": string;
             "nxm-url": string;

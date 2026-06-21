@@ -16,6 +16,12 @@
     queryWindowFocused,
   } from '$lib/wails/windowApi';
 
+  interface Props {
+    onclose?: () => void | Promise<void>;
+  }
+
+  let { onclose }: Props = $props();
+
   let maximised = $state(false);
   let focused = $state(true);
 
@@ -88,7 +94,10 @@
       type="button"
       class="window-controls-btn window-controls-btn--close"
       aria-label={windowCloseLabel}
-      onclick={() => void closeWindow()}
+      onclick={() => {
+        if (onclose) void onclose();
+        else void closeWindow();
+      }}
     >
       <X size={14} strokeWidth={2} aria-hidden="true" />
     </button>
