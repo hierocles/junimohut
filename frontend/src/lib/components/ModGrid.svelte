@@ -1,7 +1,6 @@
 <script lang="ts">
   import { tick } from "svelte";
   import { ChevronDown, ChevronUp } from "@lucide/svelte";
-  import { createVirtualizer } from "@tanstack/svelte-virtual";
   import { createAnnouncer } from "@sv-kit/a11y-keys";
   import type { Category, Mod } from "$lib/api/client";
   import { modStatusInfo, modStatusSortKey } from "$lib/mods/modStatus";
@@ -101,7 +100,6 @@
     oncolumnschange,
   }: Props = $props();
 
-  type GridRow = { kind: "mod"; mod: Mod } | { kind: "empty" };
   const ENABLE_COL_WIDTH = 36;
   const ROW_HEIGHT_MOD = 44;
   const ROW_HEIGHT_EMPTY = 200;
@@ -446,25 +444,7 @@
     ),
   );
 
-  const gridRows = $derived.by((): GridRow[] => {
-    if (displayMods.length === 0) return [{ kind: "empty" }];
-    return displayMods.map((mod) => ({ kind: "mod", mod }));
-  });
-
-  const isEmptyGrid = $derived(
-    gridRows.length === 1 && gridRows[0]?.kind === "empty",
-  );
-
-  const rowVirtualizer = createVirtualizer<HTMLElement, Element>({
-    count: 0,
-    getScrollElement: () => scrollEl,
-    estimateSize: () => ROW_HEIGHT_MOD,
-    overscan: 12,
-  });
-
-  $effect(() => {
-    $rowVirtualizer.setOptions({ count: isEmptyGrid ? 0 : gridRows.length });
-  });
+  const isEmptyGrid = $derived(displayMods.length === 0);
 
   const showBulkHint = $derived(!bulkHintDismissed && displayMods.length > 0);
   const showWorkspaceHint = $derived(!workspaceHintDismissed);
@@ -678,15 +658,9 @@
     }
   }
 
-  function gridIndexForModId(id: string): number {
-    return gridRows.findIndex((row) => row.kind === "mod" && row.mod.id === id);
-  }
-
   async function focusModRow(id: string) {
     focusedModId = id;
-    const gridIndex = gridIndexForModId(id);
-    if (gridIndex === -1) return;
-    $rowVirtualizer.scrollToIndex(gridIndex, { align: "auto" });
+    if (displayMods.findIndex((m) => m.id === id) === -1) return;
     await tick();
     scrollEl?.querySelector<HTMLElement>(`tr[data-mod-id="${id}"]`)?.focus();
   }
@@ -1238,30 +1212,9 @@
             </td>
           </tr>
         {:else}
-          {@const virtualItems = $rowVirtualizer.getVirtualItems()}
-          {@const paddingTop =
-            virtualItems.length > 0 ? virtualItems[0].start : 0}
-          {@const paddingBottom =
-            virtualItems.length > 0
-              ? $rowVirtualizer.getTotalSize() - virtualItems.at(-1)!.end
-              : 0}
-          {#if paddingTop > 0}
-            <tr class="virtual-spacer" aria-hidden="true">
-              <td colspan={visibleColCount} style="height: {paddingTop}px"></td>
-            </tr>
-          {/if}
-          {#each virtualItems as virtualRow (virtualRow.key)}
-            {@const row = gridRows[virtualRow.index]}
-            {#if row.kind === "mod"}
-              {@render modRow(row.mod)}
-            {/if}
+          {#each displayMods as mod (mod.id)}
+            {@render modRow(mod)}
           {/each}
-          {#if paddingBottom > 0}
-            <tr class="virtual-spacer" aria-hidden="true">
-              <td colspan={visibleColCount} style="height: {paddingBottom}px"
-              ></td>
-            </tr>
-          {/if}
         {/if}
       </tbody>
     </table>
@@ -1457,12 +1410,6 @@
 
   .mod-table {
     table-layout: fixed;
-  }
-
-  .mod-table :global(.virtual-spacer td) {
-    padding: 0;
-    border: none;
-    line-height: 0;
   }
 
   .mod-table :global(th),

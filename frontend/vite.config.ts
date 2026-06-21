@@ -17,7 +17,6 @@ export default defineConfig({
   },
   plugins: [tailwindcss(), svelte(), wails("./bindings")],
   optimizeDeps: {
-    entries: ["index.html", "config-editor.html"],
     include: [
       "@wailsio/runtime",
       "@codemirror/commands",
@@ -28,15 +27,6 @@ export default defineConfig({
       "@codemirror/view",
       "@lucide/svelte",
       "@sv-kit/a11y-keys",
-      "@tanstack/svelte-virtual",
     ],
-  },
-  build: {
-    rollupOptions: {
-      input: {
-        main: path.resolve(__dirname, "index.html"),
-        configEditor: path.resolve(__dirname, "config-editor.html"),
-      },
-    },
   },
 });

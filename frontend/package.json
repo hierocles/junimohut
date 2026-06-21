@@ -21,7 +21,6 @@
     "@lezer/highlight": "^1.2.3",
     "@lucide/svelte": "^1.21.0",
     "@sv-kit/a11y-keys": "^1.0.0",
-    "@tanstack/svelte-virtual": "^3.13.29",
     "@wailsio/runtime": "3.0.0-alpha.79",
     "codemirror": "^6.0.2",
     "jsonc-parser": "^3.3.1"

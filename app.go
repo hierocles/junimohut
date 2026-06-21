@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -73,6 +74,7 @@ func (a *App) ensureInit() error {
 }
 
 func (a *App) Startup(ctx context.Context) error {
+	slog.Info("App.Startup called (RPC)")
 	a.ctx = ctx
 	return a.ensureInit()
 }
@@ -221,7 +223,6 @@ func (a *App) refreshMods() error {
 	}
 	list = mods.DedupeByUniqueID(mods.DedupeByID(list))
 	list = mods.ResolveDependencies(list)
-
 	a.mu.Lock()
 	a.modsCache = list
 	a.mu.Unlock()
