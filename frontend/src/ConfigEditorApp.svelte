@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { Events } from "@wailsio/runtime";
-  import { createVirtualizer } from "@tanstack/svelte-virtual";
   import * as API from "$lib/api";
   import JsonCodeEditor from "$lib/components/JsonCodeEditor.svelte";
   import ConfigEditorFileTree, {
@@ -155,19 +154,6 @@
     dirty && jsonState.valid && !saving && !loadError && !!activeRelPath,
   );
   const loading = $derived(loadingMods || loadingFile);
-
-  const MOD_ROW_HEIGHT = 52;
-  let modListEl = $state<HTMLDivElement | undefined>();
-  const modVirtualizer = createVirtualizer<HTMLDivElement, HTMLDivElement>({
-    count: 0,
-    getScrollElement: () => modListEl ?? null,
-    estimateSize: () => MOD_ROW_HEIGHT,
-    overscan: 12,
-  });
-
-  $effect(() => {
-    $modVirtualizer.setOptions({ count: filteredMods.length });
-  });
 
   const confirmVariant = $derived(
     pendingAction?.kind === "discard" || pendingAction?.kind === "close"
@@ -400,24 +386,29 @@
     });
   }
 
+  function scrollModIntoView(index: number) {
+    const mod = filteredMods[index];
+    if (mod) document.getElementById(`config-mod-${mod.modId}`)?.scrollIntoView({ block: "nearest" });
+  }
+
   function onModListKeydown(e: KeyboardEvent) {
     if (filteredMods.length === 0) return;
     if (e.key === "ArrowDown") {
       e.preventDefault();
       modFocusIndex = Math.min(filteredMods.length - 1, modFocusIndex + 1);
-      $modVirtualizer.scrollToIndex(modFocusIndex, { align: "auto" });
+      scrollModIntoView(modFocusIndex);
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       modFocusIndex = Math.max(0, modFocusIndex - 1);
-      $modVirtualizer.scrollToIndex(modFocusIndex, { align: "auto" });
+      scrollModIntoView(modFocusIndex);
     } else if (e.key === "Home") {
       e.preventDefault();
       modFocusIndex = 0;
-      $modVirtualizer.scrollToIndex(0, { align: "start" });
+      scrollModIntoView(0);
     } else if (e.key === "End") {
       e.preventDefault();
       modFocusIndex = filteredMods.length - 1;
-      $modVirtualizer.scrollToIndex(modFocusIndex, { align: "end" });
+      scrollModIntoView(modFocusIndex);
     } else if (e.key === "Enter") {
       e.preventDefault();
       const mod = filteredMods[modFocusIndex];
@@ -653,7 +644,6 @@
         />
         <div
           class="config-editor-mod-list"
-          bind:this={modListEl}
           role="listbox"
           aria-label="Mods with JSON files"
           tabindex={filteredMods.length > 0 ? 0 : -1}
@@ -671,47 +661,35 @@
               </p>
             </div>
           {:else}
-            <div
-              class="config-editor-mod-list-inner"
-              style:height="{$modVirtualizer.getTotalSize()}px"
-            >
-              {#each $modVirtualizer.getVirtualItems() as virtualRow (virtualRow.key)}
-                {@const mod = filteredMods[virtualRow.index]}
-                <div
-                  class="config-mod-row-wrap"
-                  style:height="{virtualRow.size}px"
-                  style:transform="translateY({virtualRow.start}px)"
+              {#each filteredMods as mod, i (mod.modId)}
+                <button
+                  id="config-mod-{mod.modId}"
+                  type="button"
+                  class="config-mod-row"
+                  class:active={mod.modId === modId}
+                  class:keyboard-focused={i === modFocusIndex}
+                  role="option"
+                  aria-selected={mod.modId === modId}
+                  tabindex={-1}
+                  onclick={() => {
+                    if (mod.modId !== modId) {
+                      requestAction({ kind: "switch-mod", modId: mod.modId });
+                    }
+                  }}
                 >
-                  <button
-                    id="config-mod-{mod.modId}"
-                    type="button"
-                    class="config-mod-row"
-                    class:active={mod.modId === modId}
-                    class:keyboard-focused={virtualRow.index === modFocusIndex}
-                    role="option"
-                    aria-selected={mod.modId === modId}
-                    tabindex={-1}
-                    onclick={() => {
-                      if (mod.modId !== modId) {
-                        requestAction({ kind: "switch-mod", modId: mod.modId });
-                      }
-                    }}
-                  >
-                    <span class="config-mod-row-top">
-                      <span class="config-mod-row-name truncate"
-                        >{mod.modName}</span
-                      >
-                      <span class="config-mod-row-count type-caption"
-                        >{modFileCountLabel(mod.jsonFileCount)}</span
-                      >
-                    </span>
-                    <span class="config-mod-row-path type-mono truncate"
-                      >{mod.folderPath}</span
+                  <span class="config-mod-row-top">
+                    <span class="config-mod-row-name truncate"
+                      >{mod.modName}</span
                     >
-                  </button>
-                </div>
+                    <span class="config-mod-row-count type-caption"
+                      >{modFileCountLabel(mod.jsonFileCount)}</span
+                    >
+                  </span>
+                  <span class="config-mod-row-path type-mono truncate"
+                    >{mod.folderPath}</span
+                  >
+                </button>
               {/each}
-            </div>
           {/if}
         </div>
       </section>
@@ -1020,18 +998,6 @@
     position: relative;
   }
 
-  .config-editor-mod-list-inner {
-    position: relative;
-    width: 100%;
-  }
-
-  .config-mod-row-wrap {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    box-sizing: border-box;
-  }
 
   .config-editor-sidebar-empty {
     padding: var(--space-2);
