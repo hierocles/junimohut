@@ -8,12 +8,19 @@ Cross-platform mod manager for [Stardew Valley](https://www.stardewvalley.net/),
 - Install mods from `.zip`, `.7z`, `.rar` (drag-and-drop or file picker)
 - Unlimited profiles with per-profile mod loadouts
 - Profile-specific `config.json` support
+- Integrated config/json editor
 - SMAPI launch, version display, update detection
 - Mod update checking (SMAPI API, 1/hour rate limit)
 - Mod grouping (folder, condensed folder, content pack)
 - **User-defined categories** with show/hide visibility filters
 - Nexus Mods API (endorse, downloads, premium update install)
 - i18n-ready translation API
+
+## Preview
+
+![Main Window](assets/junimohut_main.png)
+
+![Editor Window](assets/junimohut_editor.png)
 
 ## Prerequisites
 

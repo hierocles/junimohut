@@ -7,6 +7,9 @@ bin
 build
 .task/
 
+# misc
+tmp/
+
 # env
 .env
 .env.*
