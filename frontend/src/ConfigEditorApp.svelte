@@ -59,7 +59,7 @@
     configEditorWindowTitle,
     dialogCancelLabel,
   } from "$lib/copy";
-  import { closeWindow } from "$lib/wails/windowApi";
+  import { closeWindow, onDragRegionDoubleClick } from "$lib/wails/windowApi";
 
   type ModConfigView = Awaited<ReturnType<typeof API.GetModConfigFile>>;
   type ModJsonSummary = NonNullable<
@@ -630,8 +630,12 @@
 
 <div class="config-editor-shell app-shell">
   <header class="config-editor-header app-panel app-border">
-    <div class="config-editor-drag" data-wails-drag="true">
-      <div class="config-editor-title-block">
+    <div
+      class="config-editor-chrome"
+      ondblclick={onDragRegionDoubleClick}
+      role="presentation"
+    >
+      <div class="config-editor-title-block wails-drag">
         {#if view}
           <h1 class="type-headline text-surface-50">{view.modName}</h1>
           <p class="type-mono type-meta text-surface-400">{view.displayPath}</p>
@@ -641,8 +645,12 @@
           </h1>
         {/if}
       </div>
+      <div
+        class="config-editor-chrome-fill wails-drag"
+        aria-hidden="true"
+      ></div>
+      <WindowControls onclose={() => requestAction({ kind: "close" })} />
     </div>
-    <WindowControls onclose={() => requestAction({ kind: "close" })} />
   </header>
 
   {#if view?.profileSpecificConfigs}
@@ -997,22 +1005,30 @@
   }
 
   .config-editor-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: var(--space-3);
-    padding: var(--space-3) var(--space-3) var(--space-2);
+    padding: 0;
     border-bottom-width: 1px;
     border-bottom-style: solid;
   }
 
-  .config-editor-drag {
-    flex: 1;
-    min-width: 0;
-    padding-left: var(--space-2);
+  .config-editor-chrome {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-3) var(--space-2);
+    min-height: 2.25rem;
+  }
+
+  .config-editor-chrome-fill {
+    flex: 1 1 0;
+    min-width: var(--space-6);
+    min-height: 1.25rem;
+    align-self: stretch;
   }
 
   .config-editor-title-block {
+    flex-shrink: 0;
+    max-width: min(100%, 28rem);
+    padding-left: var(--space-2);
     display: flex;
     flex-direction: column;
     gap: var(--space-1);
