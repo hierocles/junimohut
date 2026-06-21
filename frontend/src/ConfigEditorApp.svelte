@@ -1,20 +1,22 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { Events } from "@wailsio/runtime";
+  import { ChevronRight, FileJson, Folder } from "@lucide/svelte";
   import * as API from "$lib/api";
   import JsonCodeEditor from "$lib/components/JsonCodeEditor.svelte";
-  import ConfigEditorFileTree, {
-    type ModJsonFileNode,
-  } from "$lib/components/ConfigEditorFileTree.svelte";
   import { parseJsoncState } from "$lib/mods/jsonc";
   import {
     flattenFileTree,
     treeFocusKeyForPath,
+    type ModJsonFileNode,
   } from "$lib/mods/configEditorTree";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import WindowControls from "$lib/components/WindowControls.svelte";
   import {
     formatUserError,
+    configEditorConfirmClose,
+    configEditorConfirmSwitchFile,
+    configEditorConfirmSwitchMod,
     configEditorDiscard,
     configEditorDiscardConfirmBody,
     configEditorDiscardConfirmTitle,
@@ -30,6 +32,7 @@
     configEditorNoModsWithJson,
     configEditorModMissing,
     configEditorNoJsonInMod,
+    configEditorNoFilesMatchSearch,
     configEditorEmptyLibraryHint,
     configEditorSelectModHint,
     configEditorSaveAndSwitch,
@@ -41,8 +44,10 @@
     configEditorSaveFailed,
     configEditorSaving,
     configEditorSearchModsPlaceholder,
+    configEditorSearchFilesPlaceholder,
     configEditorSidebarFilesHeading,
     configEditorSidebarModsHeading,
+    configEditorSidebarResizeAria,
     configEditorUnsaved,
     configEditorUnsavedCloseBody,
     configEditorUnsavedCloseTitle,
@@ -57,8 +62,8 @@
   import { closeWindow } from "$lib/wails/windowApi";
 
   type ModConfigView = Awaited<ReturnType<typeof API.GetModConfigFile>>;
-  type ModJsonSummary = Awaited<
-    ReturnType<typeof API.ListModsWithJsonFiles>
+  type ModJsonSummary = NonNullable<
+    Awaited<ReturnType<typeof API.ListModsWithJsonFiles>>
   >[number];
 
   type PendingAction =
@@ -66,6 +71,13 @@
     | { kind: "switch-mod"; modId: string; relPath?: string }
     | { kind: "switch-file"; relPath: string }
     | { kind: "discard" };
+
+  const SIDEBAR_MODS_MIN = 0.28;
+  const SIDEBAR_MODS_MAX = 0.72;
+  const SIDEBAR_WIDTH_MIN = 200;
+  const SIDEBAR_WIDTH_MAX = 480;
+  const SIDEBAR_WIDTH_DEFAULT = 280;
+  const SIDEBAR_WIDTH_STORAGE_KEY = "sdvm-config-editor-sidebar-width";
 
   function queryFromLocation() {
     const params = new URLSearchParams(window.location.search);
@@ -102,16 +114,39 @@
     return { modId: "", relPath: "" };
   }
 
+  function loadSidebarWidth(): number {
+    try {
+      const n = parseInt(
+        localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY) ?? "",
+        10,
+      );
+      if (n >= SIDEBAR_WIDTH_MIN && n <= SIDEBAR_WIDTH_MAX) return n;
+    } catch {
+      /* storage unavailable */
+    }
+    return SIDEBAR_WIDTH_DEFAULT;
+  }
+
+  function setSidebarWidth(w: number) {
+    sidebarWidth = w;
+    try {
+      localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(w));
+    } catch {
+      /* storage unavailable */
+    }
+  }
+
   const initial = queryFromLocation();
 
   let modId = $state(initial.modId);
   let activeRelPath = $state(initial.relPath);
   let modSummaries = $state<ModJsonSummary[]>([]);
   let modSearch = $state("");
+  let fileSearch = $state("");
   let fileTree = $state<ModJsonFileNode[]>([]);
   let expandedDirs = $state(new Set<string>());
   let loadingMods = $state(true);
-  let loadingFile = $state(true);
+  let loadingFile = $state(!!initial.modId);
   let loadError = $state<string | null>(null);
   let view = $state<ModConfigView | null>(null);
   let draft = $state("");
@@ -127,15 +162,17 @@
 
   let modFocusIndex = $state(0);
   let fileFocusKey = $state<string | null>(null);
-  let fileListEl = $state<HTMLDivElement | undefined>();
 
-  const SIDEBAR_MODS_MIN = 0.28;
-  const SIDEBAR_MODS_MAX = 0.72;
   let sidebarModsFr = $state(0.4);
+  let sidebarWidth = $state(loadSidebarWidth());
   let sidebarSplitResize = $state<{
     startY: number;
     startFr: number;
     totalPx: number;
+  } | null>(null);
+  let sidebarWidthResize = $state<{
+    startX: number;
+    startWidth: number;
   } | null>(null);
 
   const filteredMods = $derived.by(() => {
@@ -148,20 +185,36 @@
     );
   });
 
+  const flatFileRows = $derived(flattenFileTree(fileTree, expandedDirs));
+
+  const filteredFileRows = $derived.by(() => {
+    const q = fileSearch.trim().toLowerCase();
+    if (!q) return flatFileRows;
+    return flatFileRows.filter((row) => {
+      if (row.type === "dir") {
+        return (
+          row.name.toLowerCase().includes(q) ||
+          row.dirKey.toLowerCase().includes(q)
+        );
+      }
+      return (
+        row.name.toLowerCase().includes(q) ||
+        row.relPath.toLowerCase().includes(q)
+      );
+    });
+  });
+
   const jsonState = $derived(parseJsoncState(draft));
   const dirty = $derived(draft !== saved);
   const canSave = $derived(
     dirty && jsonState.valid && !saving && !loadError && !!activeRelPath,
   );
-  const loading = $derived(loadingMods || loadingFile);
 
   const confirmVariant = $derived(
     pendingAction?.kind === "discard" || pendingAction?.kind === "close"
       ? "danger"
       : "default",
   );
-
-  const flatFileRows = $derived(flattenFileTree(fileTree, expandedDirs));
 
   const showSaveAndSwitch = $derived(
     canSave &&
@@ -194,13 +247,15 @@
   });
 
   $effect(() => {
+    const rows = filteredFileRows;
     if (activeRelPath) {
-      fileFocusKey = treeFocusKeyForPath(activeRelPath);
-    } else if (flatFileRows.length > 0) {
-      fileFocusKey = flatFileRows[0].focusKey;
-    } else {
-      fileFocusKey = null;
+      const key = treeFocusKeyForPath(activeRelPath);
+      if (rows.some((row) => row.focusKey === key)) {
+        fileFocusKey = key;
+        return;
+      }
     }
+    fileFocusKey = rows[0]?.focusKey ?? null;
   });
 
   async function loadModSummaries() {
@@ -256,6 +311,7 @@
   }
 
   async function selectMod(id: string, relPath = "") {
+    fileSearch = "";
     await loadFileTree(id);
     await loadFile(id, relPath);
   }
@@ -364,31 +420,20 @@
     }
   });
 
-  function focusFileTreeItem() {
-    const key = fileFocusKey;
-    if (!key) return;
-    fileListEl
-      ?.querySelector<HTMLElement>(`[data-focus-key="${CSS.escape(key)}"]`)
-      ?.focus();
-  }
-
-  function onFileListFocus(e: FocusEvent) {
-    if (e.target === fileListEl) focusFileTreeItem();
-  }
-
-  function scrollFileRowIntoView() {
-    const key = fileFocusKey;
-    if (!key) return;
-    queueMicrotask(() => {
-      fileListEl
-        ?.querySelector<HTMLElement>(`[data-focus-key="${CSS.escape(key)}"]`)
-        ?.scrollIntoView({ block: "nearest" });
-    });
-  }
-
   function scrollModIntoView(index: number) {
     const mod = filteredMods[index];
-    if (mod) document.getElementById(`config-mod-${mod.modId}`)?.scrollIntoView({ block: "nearest" });
+    if (!mod) return;
+    document
+      .getElementById(`config-mod-${mod.modId}`)
+      ?.scrollIntoView({ block: "nearest" });
+  }
+
+  function scrollFileRowIntoView(index: number) {
+    const row = filteredFileRows[index];
+    if (!row) return;
+    document
+      .getElementById(`config-file-${row.focusKey}`)
+      ?.scrollIntoView({ block: "nearest" });
   }
 
   function onModListKeydown(e: KeyboardEvent) {
@@ -419,7 +464,7 @@
   }
 
   function onFileListKeydown(e: KeyboardEvent) {
-    const rows = flatFileRows;
+    const rows = filteredFileRows;
     if (!rows.length) return;
     let idx = rows.findIndex((row) => row.focusKey === fileFocusKey);
     if (idx < 0) idx = 0;
@@ -428,14 +473,12 @@
       e.preventDefault();
       idx = Math.min(rows.length - 1, idx + 1);
       fileFocusKey = rows[idx].focusKey;
-      scrollFileRowIntoView();
-      focusFileTreeItem();
+      scrollFileRowIntoView(idx);
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       idx = Math.max(0, idx - 1);
       fileFocusKey = rows[idx].focusKey;
-      scrollFileRowIntoView();
-      focusFileTreeItem();
+      scrollFileRowIntoView(idx);
     } else if (e.key === "ArrowRight") {
       const row = rows[idx];
       if (row?.type === "dir" && !row.expanded) {
@@ -494,6 +537,33 @@
     }
   }
 
+  function onSidebarWidthPointerDown(e: PointerEvent) {
+    sidebarWidthResize = { startX: e.clientX, startWidth: sidebarWidth };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  }
+
+  function onSidebarWidthPointerMove(e: PointerEvent) {
+    if (!sidebarWidthResize) return;
+    const next = Math.min(
+      SIDEBAR_WIDTH_MAX,
+      Math.max(
+        SIDEBAR_WIDTH_MIN,
+        sidebarWidthResize.startWidth + (e.clientX - sidebarWidthResize.startX),
+      ),
+    );
+    setSidebarWidth(next);
+  }
+
+  function onSidebarWidthPointerUp(e: PointerEvent) {
+    if (!sidebarWidthResize) return;
+    sidebarWidthResize = null;
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {
+      // pointer already released
+    }
+  }
+
   function onKeydown(e: KeyboardEvent) {
     if ((e.ctrlKey || e.metaKey) && e.key === "s") {
       e.preventDefault();
@@ -510,14 +580,14 @@
       return {
         title: configEditorUnsavedSwitchTitle,
         message: configEditorUnsavedSwitchBody,
-        confirmLabel: "Switch mod",
+        confirmLabel: configEditorConfirmSwitchMod,
       };
     }
     if (action?.kind === "switch-file") {
       return {
         title: configEditorUnsavedFileSwitchTitle,
         message: configEditorUnsavedFileSwitchBody,
-        confirmLabel: "Switch file",
+        confirmLabel: configEditorConfirmSwitchFile,
       };
     }
     if (action?.kind === "discard") {
@@ -530,7 +600,7 @@
     return {
       title: configEditorUnsavedCloseTitle,
       message: configEditorUnsavedCloseBody,
-      confirmLabel: "Close",
+      confirmLabel: configEditorConfirmClose,
     };
   }
 
@@ -611,7 +681,7 @@
         >
       {/if}
       {#if !loadError && !loadingFile}
-        <span class="config-editor-jsonc-hint type-caption type-meta"
+        <span class="config-editor-jsonc-hint type-caption"
           >{configEditorJsoncHint}</span
         >
       {/if}
@@ -626,7 +696,11 @@
     </button>
   </div>
 
-  <div class="config-editor-body">
+  <div
+    class="config-editor-body"
+    class:is-resizing-width={sidebarWidthResize != null}
+    style="--config-editor-sidebar-width: {sidebarWidth}px"
+  >
     <aside
       class="config-editor-sidebar app-panel app-border"
       class:is-resizing={sidebarSplitResize != null}
@@ -642,56 +716,61 @@
           placeholder={configEditorSearchModsPlaceholder}
           bind:value={modSearch}
         />
-        <div
-          class="config-editor-mod-list"
-          role="listbox"
-          aria-label="Mods with JSON files"
-          tabindex={filteredMods.length > 0 ? 0 : -1}
-          onkeydown={onModListKeydown}
-        >
-          {#if loadingMods}
-            <p class="type-ui type-meta config-editor-sidebar-empty">
-              {configEditorLoadingMods}
+        {#if loadingMods}
+          <p class="type-ui type-meta config-editor-sidebar-empty">
+            {configEditorLoadingMods}
+          </p>
+        {:else if filteredMods.length === 0}
+          <div class="config-editor-sidebar-empty layout-stack-sm">
+            <p class="type-ui type-meta">{configEditorNoModsWithJson}</p>
+            <p class="type-caption type-meta type-prose">
+              {configEditorEmptyLibraryHint}
             </p>
-          {:else if filteredMods.length === 0}
-            <div class="config-editor-sidebar-empty layout-stack-sm">
-              <p class="type-ui type-meta">{configEditorNoModsWithJson}</p>
-              <p class="type-caption type-meta type-prose">
-                {configEditorEmptyLibraryHint}
-              </p>
-            </div>
-          {:else}
-              {#each filteredMods as mod, i (mod.modId)}
-                <button
-                  id="config-mod-{mod.modId}"
-                  type="button"
-                  class="config-mod-row"
-                  class:active={mod.modId === modId}
-                  class:keyboard-focused={i === modFocusIndex}
-                  role="option"
-                  aria-selected={mod.modId === modId}
-                  tabindex={-1}
-                  onclick={() => {
-                    if (mod.modId !== modId) {
-                      requestAction({ kind: "switch-mod", modId: mod.modId });
-                    }
-                  }}
-                >
-                  <span class="config-mod-row-top">
-                    <span class="config-mod-row-name truncate"
-                      >{mod.modName}</span
-                    >
-                    <span class="config-mod-row-count type-caption"
-                      >{modFileCountLabel(mod.jsonFileCount)}</span
-                    >
-                  </span>
-                  <span class="config-mod-row-path type-mono truncate"
-                    >{mod.folderPath}</span
+          </div>
+        {:else}
+          <div
+            class="config-editor-list-host"
+            role="listbox"
+            aria-label="Mods with JSON files"
+            aria-activedescendant={filteredMods[modFocusIndex]
+              ? `config-mod-${filteredMods[modFocusIndex].modId}`
+              : undefined}
+            tabindex={0}
+            onkeydown={onModListKeydown}
+          >
+            {#each filteredMods as mod, index (mod.modId)}
+              <button
+                id="config-mod-{mod.modId}"
+                type="button"
+                class="config-mod-row"
+                class:active={mod.modId === modId}
+                class:keyboard-focused={index === modFocusIndex}
+                role="option"
+                aria-selected={mod.modId === modId}
+                tabindex={-1}
+                onclick={() => {
+                  if (mod.modId !== modId) {
+                    requestAction({
+                      kind: "switch-mod",
+                      modId: mod.modId,
+                    });
+                  }
+                }}
+              >
+                <span class="config-mod-row-top">
+                  <span class="config-mod-row-name truncate">{mod.modName}</span
                   >
-                </button>
-              {/each}
-          {/if}
-        </div>
+                  <span class="config-mod-row-count type-caption"
+                    >{modFileCountLabel(mod.jsonFileCount)}</span
+                  >
+                </span>
+                <span class="config-mod-row-path type-mono truncate"
+                  >{mod.folderPath}</span
+                >
+              </button>
+            {/each}
+          </div>
+        {/if}
       </section>
 
       <div
@@ -711,38 +790,101 @@
         <h2 class="type-label config-editor-sidebar-heading">
           {configEditorSidebarFilesHeading}
         </h2>
-        <div
-          class="config-editor-file-list"
-          bind:this={fileListEl}
-          role="group"
-          aria-label="JSON file tree navigation"
-          tabindex={flatFileRows.length > 0 ? 0 : -1}
-          onfocus={onFileListFocus}
-          onkeydown={onFileListKeydown}
-        >
-          {#if !modId}
-            <p class="type-ui type-meta config-editor-sidebar-empty">
-              {configEditorSelectModHint}
-            </p>
-          {:else if fileTree.length === 0}
-            <p class="type-ui type-meta config-editor-sidebar-empty">
-              {configEditorNoJsonInMod}
-            </p>
-          {:else}
-            <ConfigEditorFileTree
-              nodes={fileTree}
-              {activeRelPath}
-              {expandedDirs}
-              focusedKey={fileFocusKey}
-              onselectfile={(relPath) => {
-                if (relPath === activeRelPath) return;
-                requestAction({ kind: "switch-file", relPath });
-              }}
-              ontoggledir={toggleDir}
-            />
-          {/if}
-        </div>
+        <input
+          type="search"
+          class="input input-sm w-full"
+          placeholder={configEditorSearchFilesPlaceholder}
+          bind:value={fileSearch}
+          disabled={!modId || fileTree.length === 0}
+        />
+        {#if !modId}
+          <p class="type-ui type-meta config-editor-sidebar-empty">
+            {configEditorSelectModHint}
+          </p>
+        {:else if fileTree.length === 0}
+          <p class="type-ui type-meta config-editor-sidebar-empty">
+            {configEditorNoJsonInMod}
+          </p>
+        {:else if filteredFileRows.length === 0}
+          <p class="type-ui type-meta config-editor-sidebar-empty">
+            {configEditorNoFilesMatchSearch}
+          </p>
+        {:else}
+          <div
+            class="config-editor-list-host"
+            role="tree"
+            aria-label="JSON files"
+            aria-activedescendant={fileFocusKey
+              ? `config-file-${fileFocusKey}`
+              : undefined}
+            tabindex={0}
+            onkeydown={onFileListKeydown}
+          >
+            {#each filteredFileRows as row (row.focusKey)}
+              {#if row.type === "dir"}
+                <button
+                  id="config-file-{row.focusKey}"
+                  type="button"
+                  class="config-tree-row config-tree-row--dir"
+                  class:expanded={row.expanded}
+                  class:keyboard-focused={row.focusKey === fileFocusKey}
+                  style:--tree-depth={row.depth}
+                  role="treeitem"
+                  aria-selected={false}
+                  aria-expanded={row.expanded}
+                  aria-level={row.depth + 1}
+                  tabindex={-1}
+                  data-focus-key={row.focusKey}
+                  onclick={() => toggleDir(row.dirKey)}
+                >
+                  <span
+                    class="config-tree-chevron"
+                    class:rotated={row.expanded}
+                  >
+                    <ChevronRight size={14} aria-hidden="true" />
+                  </span>
+                  <Folder size={14} aria-hidden="true" />
+                  <span class="truncate">{row.name}</span>
+                </button>
+              {:else}
+                <button
+                  id="config-file-{row.focusKey}"
+                  type="button"
+                  class="config-tree-row config-tree-row--file"
+                  class:active={activeRelPath === row.relPath}
+                  class:keyboard-focused={row.focusKey === fileFocusKey}
+                  style:--tree-depth={row.depth}
+                  role="treeitem"
+                  aria-selected={activeRelPath === row.relPath}
+                  aria-level={row.depth + 1}
+                  tabindex={-1}
+                  data-focus-key={row.focusKey}
+                  onclick={() => {
+                    if (row.relPath === activeRelPath) return;
+                    requestAction({
+                      kind: "switch-file",
+                      relPath: row.relPath,
+                    });
+                  }}
+                >
+                  <FileJson size={14} aria-hidden="true" />
+                  <span class="truncate">{row.name}</span>
+                </button>
+              {/if}
+            {/each}
+          </div>
+        {/if}
       </section>
+
+      <button
+        type="button"
+        class="config-editor-sidebar-resize"
+        aria-label={configEditorSidebarResizeAria}
+        onpointerdown={onSidebarWidthPointerDown}
+        onpointermove={onSidebarWidthPointerMove}
+        onpointerup={onSidebarWidthPointerUp}
+        onpointercancel={onSidebarWidthPointerUp}
+      ></button>
     </aside>
 
     <main class="config-editor-main">
@@ -914,7 +1056,7 @@
   }
 
   .config-editor-jsonc-hint {
-    color: var(--color-surface-500);
+    color: var(--color-surface-400);
     flex-basis: 100%;
   }
 
@@ -927,14 +1069,21 @@
 
   .config-editor-body {
     display: grid;
-    grid-template-columns: 240px 1fr;
+    grid-template-columns: var(--config-editor-sidebar-width, 280px) 1fr;
     min-height: 0;
     overflow: hidden;
   }
 
+  .config-editor-body.is-resizing-width {
+    cursor: col-resize;
+    user-select: none;
+  }
+
   .config-editor-sidebar {
+    position: relative;
     display: grid;
     min-height: 0;
+    min-width: 0;
     border-right-width: 1px;
     border-right-style: solid;
   }
@@ -949,14 +1098,22 @@
     flex-direction: column;
     gap: var(--space-2);
     min-height: 0;
+    overflow: hidden;
     padding: var(--space-3);
   }
 
   .config-editor-sidebar-mods {
+    grid-row: 1;
+    min-height: 0;
+  }
+
+  .config-editor-sidebar-files {
+    grid-row: 3;
     min-height: 0;
   }
 
   .config-editor-split-handle {
+    grid-row: 2;
     position: relative;
     flex-shrink: 0;
     height: 4px;
@@ -986,38 +1143,96 @@
     );
   }
 
+  .config-editor-sidebar-resize {
+    position: absolute;
+    top: 0;
+    right: -3px;
+    bottom: 0;
+    width: 6px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    cursor: col-resize;
+    touch-action: none;
+    z-index: 1;
+  }
+
+  .config-editor-sidebar-resize::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: 1px;
+    transform: translateX(-50%);
+    background: var(--sdvm-border);
+    transition: background-color var(--motion-fast) var(--ease-out-quart);
+  }
+
+  .config-editor-sidebar-resize:hover::after,
+  .config-editor-body.is-resizing-width .config-editor-sidebar-resize::after {
+    background: color-mix(
+      in oklch,
+      var(--color-primary-500) 45%,
+      var(--sdvm-border)
+    );
+  }
+
+  .config-editor-sidebar-resize:focus-visible {
+    outline: none;
+  }
+
+  .config-editor-sidebar-resize:focus-visible::after {
+    width: 2px;
+    background: color-mix(
+      in oklch,
+      var(--color-primary-500) 55%,
+      var(--sdvm-border)
+    );
+  }
+
   .config-editor-sidebar-heading {
     color: var(--color-surface-400);
   }
 
-  .config-editor-mod-list,
-  .config-editor-file-list {
-    flex: 1;
+  .config-editor-list-host {
+    flex: 1 1 0;
     min-height: 0;
-    overflow: auto;
-    position: relative;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
   }
 
+  .config-editor-list-host:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 2px
+      color-mix(in oklch, var(--color-primary-500) 35%, transparent);
+    border-radius: var(--radius-base);
+  }
 
   .config-editor-sidebar-empty {
     padding: var(--space-2);
     text-align: center;
   }
 
-  .config-mod-row {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.125rem;
+  .config-mod-row,
+  .config-tree-row {
     width: 100%;
-    height: 100%;
-    padding: var(--space-2);
     border: none;
     border-radius: var(--radius-base);
     background: transparent;
     color: var(--color-surface-300);
     text-align: left;
     transition: background-color var(--motion-fast) var(--ease-out-quart);
+  }
+
+  .config-mod-row {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 0.125rem;
+    padding: var(--space-2);
   }
 
   .config-mod-row-top {
@@ -1028,12 +1243,14 @@
     min-width: 0;
   }
 
-  .config-mod-row:hover {
+  .config-mod-row:hover,
+  .config-tree-row:hover {
     background: var(--sdvm-raised);
     color: var(--color-surface-50);
   }
 
-  .config-mod-row.active {
+  .config-mod-row.active,
+  .config-tree-row.active {
     background: color-mix(
       in oklch,
       var(--color-primary-500) 16%,
@@ -1043,21 +1260,12 @@
   }
 
   .config-mod-row.keyboard-focused,
+  .config-tree-row.keyboard-focused,
   .config-mod-row:focus-visible,
-  .config-editor-mod-list:focus-visible {
+  .config-tree-row:focus-visible {
     outline: none;
-  }
-
-  .config-mod-row.keyboard-focused,
-  .config-editor-mod-list:focus-visible .config-mod-row.keyboard-focused {
     box-shadow: inset 0 0 0 2px
       color-mix(in oklch, var(--color-primary-500) 55%, transparent);
-  }
-
-  .config-editor-mod-list:focus-visible {
-    box-shadow: inset 0 0 0 2px
-      color-mix(in oklch, var(--color-primary-500) 35%, transparent);
-    border-radius: var(--radius-base);
   }
 
   .config-mod-row-name {
@@ -1084,6 +1292,25 @@
 
   .config-mod-row.active .config-mod-row-path {
     color: var(--color-surface-400);
+  }
+
+  .config-tree-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-2);
+    padding-left: calc(var(--space-2) + var(--tree-depth, 0) * var(--space-3));
+    font-size: var(--type-ui);
+  }
+
+  .config-tree-chevron {
+    display: inline-flex;
+    flex-shrink: 0;
+    transition: transform var(--motion-fast) var(--ease-out-quart);
+  }
+
+  .config-tree-chevron.rotated {
+    transform: rotate(90deg);
   }
 
   .config-editor-main {
@@ -1169,7 +1396,10 @@
 
   @media (prefers-reduced-motion: reduce) {
     .config-mod-row,
-    .config-editor-split-handle::after {
+    .config-tree-row,
+    .config-tree-chevron,
+    .config-editor-split-handle::after,
+    .config-editor-sidebar-resize::after {
       transition: none;
     }
 

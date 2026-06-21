@@ -690,6 +690,12 @@ export const configEditorEditConfig = "Edit configs";
 export const configEditorSidebarModsHeading = "Mods";
 export const configEditorSidebarFilesHeading = "Files";
 export const configEditorSearchModsPlaceholder = "Search mods…";
+export const configEditorSearchFilesPlaceholder = "Search files…";
+export const configEditorConfirmSwitchMod = "Switch mod";
+export const configEditorConfirmSwitchFile = "Switch file";
+export const configEditorConfirmClose = "Close";
+export const configEditorSidebarResizeAria = "Resize sidebar";
+export const configEditorNoFilesMatchSearch = "No files match your search.";
 export const configEditorNoModsWithJson = "No mods with JSON files in your library.";
 export const configEditorEmptyLibraryHint =
   "Install mods that include config.json or other .json files, then choose Edit configs from a mod in Junimo Hut.";

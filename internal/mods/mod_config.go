@@ -97,7 +97,13 @@ func ResolveModJSONPath(modsRoot, folderPath, relPath string) (string, error) {
 	return abs, nil
 }
 
-// ListJsonFileRelPaths walks modDir and returns relative .json file paths (POSIX slashes).
+// IsEditableJSONFile reports whether name is an editable mod JSON file (not manifest.json).
+func IsEditableJSONFile(name string) bool {
+	return strings.HasSuffix(strings.ToLower(name), ".json") &&
+		!strings.EqualFold(name, "manifest.json")
+}
+
+// ListJsonFileRelPaths walks modDir and returns relative editable .json file paths (POSIX slashes).
 func ListJsonFileRelPaths(modDir string) ([]string, error) {
 	info, err := os.Stat(modDir)
 	if err != nil {
@@ -114,7 +120,7 @@ func ListJsonFileRelPaths(modDir string) ([]string, error) {
 		if d.IsDir() {
 			return nil
 		}
-		if !strings.HasSuffix(strings.ToLower(d.Name()), ".json") {
+		if !IsEditableJSONFile(d.Name()) {
 			return nil
 		}
 		rel, err := filepath.Rel(modDir, path)

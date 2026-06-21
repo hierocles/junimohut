@@ -108,6 +108,7 @@ func modFromManifest(opts ScanOptions, manifestPath string, seen map[string]bool
 
 	configPath := filepath.Join(modDir, "config.json")
 	_, hasConfig := os.Stat(configPath)
+	jsonFileCount := CountJsonFiles(modDir)
 	groupKey, groupLabel := groupForMod(rel, manifest, opts.Grouping)
 
 	return Mod{
@@ -120,8 +121,8 @@ func modFromManifest(opts ScanOptions, manifestPath string, seen map[string]bool
 		GroupLabel:   groupLabel,
 		UpdateStatus: UpdateStatus{State: "current"},
 		HasConfig:    hasConfig == nil,
-		// Cheap signal for the config editor; full JSON tree is counted on demand.
-		HasJsonFiles: hasConfig == nil,
+		HasJsonFiles: jsonFileCount > 0,
+		JsonFileCount: jsonFileCount,
 		IsCoreMod:    CoreModIDs[manifest.UniqueID],
 		InstallTime:  modTime,
 		LastUpdated:  modTime,

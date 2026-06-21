@@ -24,12 +24,19 @@ func (a *App) modByID(modID string) (mods.Mod, bool) {
 	return mods.Mod{}, false
 }
 
+func (a *App) modDirForJSON(mod mods.Mod, modsRoot string) string {
+	if mod.AbsolutePath != "" {
+		return mod.AbsolutePath
+	}
+	return mods.ModDir(modsRoot, mod.FolderPath)
+}
+
 func (a *App) modHasJsonFiles(mod mods.Mod) bool {
-	if mod.HasJsonFiles {
+	if mod.HasJsonFiles && mod.JsonFileCount > 0 {
 		return true
 	}
 	settings := a.store.Get()
-	return mods.CountJsonFiles(mods.ModDir(settings.ModsRoot, mod.FolderPath)) > 0
+	return mods.CountJsonFiles(a.modDirForJSON(mod, settings.ModsRoot)) > 0
 }
 
 func (a *App) ListModsWithJsonFiles() []mods.ModJsonSummary {
@@ -38,12 +45,12 @@ func (a *App) ListModsWithJsonFiles() []mods.ModJsonSummary {
 	}
 	a.mu.RLock()
 	defer a.mu.RUnlock()
+	settings := a.store.Get()
 	out := make([]mods.ModJsonSummary, 0)
 	for _, mod := range a.modsCache {
 		count := mod.JsonFileCount
 		if count == 0 {
-			settings := a.store.Get()
-			count = mods.CountJsonFiles(mods.ModDir(settings.ModsRoot, mod.FolderPath))
+			count = mods.CountJsonFiles(a.modDirForJSON(mod, settings.ModsRoot))
 		}
 		if count == 0 {
 			continue
@@ -67,7 +74,7 @@ func (a *App) ListModJsonFiles(modID string) ([]mods.ModJsonFileNode, error) {
 		return nil, fmt.Errorf("mod not found")
 	}
 	settings := a.store.Get()
-	paths, err := mods.ListJsonFileRelPaths(mods.ModDir(settings.ModsRoot, mod.FolderPath))
+	paths, err := mods.ListJsonFileRelPaths(a.modDirForJSON(mod, settings.ModsRoot))
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +90,7 @@ func (a *App) modConfigFileView(modID, relPath string) (mods.ModConfigView, erro
 		return mods.ModConfigView{}, fmt.Errorf("mod not found")
 	}
 	settings := a.store.Get()
-	modDir := mods.ModDir(settings.ModsRoot, mod.FolderPath)
+	modDir := a.modDirForJSON(mod, settings.ModsRoot)
 	paths, err := mods.ListJsonFileRelPaths(modDir)
 	if err != nil {
 		return mods.ModConfigView{}, err

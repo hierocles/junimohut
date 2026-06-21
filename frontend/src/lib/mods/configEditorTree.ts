@@ -1,4 +1,6 @@
-import type { ModJsonFileNode } from "$lib/components/ConfigEditorFileTree.svelte";
+import type { ModJsonFileNode } from "../../../bindings/junimohut/internal/mods/models";
+
+export type { ModJsonFileNode };
 
 export type FlatTreeRow =
   | {
