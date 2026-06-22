@@ -545,6 +545,8 @@
       mods = core.mods;
       if (search === "" && filter === "none") {
         libraryMods = core.mods;
+      } else if (libraryMods.length === 0) {
+        void refreshLibraryMods();
       }
       profiles = core.profiles;
       categories = core.categories;
@@ -2030,6 +2032,7 @@
               bind:this={detailPane}
               {selectedModId}
               {mods}
+              {libraryMods}
               {categories}
               onclose={() => (selectedModId = null)}
               ondownloadupdate={downloadModUpdate}

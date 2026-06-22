@@ -225,14 +225,16 @@ export function dependencyRowsForMod(
 ): DependencyRow[] {
   const selfID = mod.manifest?.UniqueID ?? "";
   const byUniqueID = modIndexByUniqueID(allMods);
-
   const issueByID = new Map(
     (mod.dependencyIssues ?? []).map((issue) => [issue.uniqueID, issue]),
   );
 
-  return collectDependencyEntries(mod).map((entry) => {
+  return collectDependencyEntries(mod).map((entry): DependencyRow => {
     const issue = issueByID.get(entry.uniqueID);
-    if (issue) {
+
+    // For disabled/version_too_low, trust the backend — it recorded the installed
+    // version and provider name at scan time, which we'd have to re-derive here.
+    if (issue && issue.state !== "missing") {
       return {
         uniqueID: entry.uniqueID,
         minimumVersion: entry.minimumVersion,
@@ -246,6 +248,8 @@ export function dependencyRowsForMod(
       };
     }
 
+    // Check the live library. This is the primary source of truth — a provider
+    // present here is installed regardless of what the backend's snapshot says.
     const provider = byUniqueID.get(canonicalUniqueID(entry.uniqueID));
     if (provider && !uniqueIDsEqual(entry.uniqueID, selfID)) {
       return {
@@ -261,14 +265,24 @@ export function dependencyRowsForMod(
       };
     }
 
+    // Provider is not in the library. If the backend flagged it as missing, trust
+    // that. Otherwise assume satisfied (provider may have been filtered out of
+    // the view passed in, and the backend found no issue at scan time).
+    if (issue) {
+      return {
+        uniqueID: entry.uniqueID,
+        minimumVersion: entry.minimumVersion,
+        isRequired: entry.isRequired,
+        isContentPack: entry.isContentPack,
+        state: "missing",
+      };
+    }
+
     return {
       uniqueID: entry.uniqueID,
       minimumVersion: entry.minimumVersion,
       isRequired: entry.isRequired,
       isContentPack: entry.isContentPack,
-      // No backend issue means the dep is satisfied; the provider is just filtered
-      // out of the current grid view. Only optional deps stay "optional" here
-      // because the backend doesn't track optional-missing as an issue.
       state: entry.isRequired ? "satisfied" : "optional",
     };
   });

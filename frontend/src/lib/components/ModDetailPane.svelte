@@ -42,6 +42,9 @@
   interface Props {
     selectedModId: string | null;
     mods: Mod[];
+    /** Full unfiltered library — used for dep resolution so providers absent from
+     *  the current search/filter are still recognised as installed. */
+    libraryMods: Mod[];
     categories: Category[];
     onclose: () => void;
     ondownloadupdate: (mod: Mod) => Promise<void>;
@@ -54,6 +57,7 @@
   let {
     selectedModId,
     mods,
+    libraryMods,
     categories,
     onclose,
     ondownloadupdate,
@@ -88,9 +92,9 @@
       : [],
   );
 
-  const dependencyRows = $derived(mod ? dependencyRowsForMod(mod, mods) : []);
+  const dependencyRows = $derived(mod ? dependencyRowsForMod(mod, libraryMods) : []);
   const hasDependencies = $derived(dependencyRows.length > 0);
-  const dependentRows = $derived(mod ? dependentRowsForMod(mod, mods) : []);
+  const dependentRows = $derived(mod ? dependentRowsForMod(mod, libraryMods) : []);
   const dependencyIssueCount = $derived(
     mod?.missingDependencyCount ?? mod?.dependencyIssues?.length ?? 0,
   );
