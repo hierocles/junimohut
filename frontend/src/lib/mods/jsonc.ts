@@ -1,4 +1,4 @@
-import { parse, ParseErrorCode, type ParseError } from "jsonc-parser";
+import { parse, type ParseError } from "jsonc-parser";
 import { jsoncParseErrorMessage } from "$lib/copy";
 
 export type JsoncParseState = {
@@ -47,4 +47,4 @@ export function jsoncLintDiagnostics(text: string) {
   }));
 }
 
-export { ParseErrorCode };
+export { ParseErrorCode } from "$lib/mods/jsoncEnums";

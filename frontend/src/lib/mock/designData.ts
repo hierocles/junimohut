@@ -1,6 +1,10 @@
 import type { Category } from "../../../bindings/junimohut/internal/categories/models";
 import type { Mod } from "$lib/api/client";
-import type { InstallDependencyPreview } from "$lib/mods/dependencies";
+import {
+  type InstallDependencyPreview,
+  resolveDependencies,
+  countModsWithDependencyIssues,
+} from "$lib/mods/dependencies";
 import { pathBasename } from "$lib/copy";
 import type { Profile } from "../../../bindings/junimohut/internal/profiles/models";
 import type { Settings } from "../../../bindings/junimohut/internal/config/models";
@@ -442,11 +446,14 @@ function buildMod(seed: ModSeed, enabledOverrides: Map<string, boolean>): Mod {
           }
         : { state: "current", latestVersion: "", modPageUrl: "", message: "" },
     hasConfig: seed.hasConfig ?? false,
+    hasJsonFiles: seed.hasConfig ?? false,
+    jsonFileCount: seed.hasConfig ? 1 : 0,
     isCoreMod: seed.isCoreMod ?? false,
     installTime: 1704067200,
     lastUpdated: 1711929600,
     dependencyIssues: [],
     missingDependencyCount: 0,
+    containsOverwrites: false,
     savedDownloadPath: seed.savedDownloadPath,
     customName: resolvedCustomName(id, seed),
   };

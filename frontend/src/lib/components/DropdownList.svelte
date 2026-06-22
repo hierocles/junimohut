@@ -365,6 +365,7 @@
 
   $effect(() => {
     if (!open || !listEl) return;
+    const el = listEl;
     const onListFocusOut = () => {
       queueMicrotask(() => {
         if (!open) return;
@@ -372,8 +373,8 @@
         dismiss(false);
       });
     };
-    listEl.addEventListener('focusout', onListFocusOut);
-    return () => listEl.removeEventListener('focusout', onListFocusOut);
+    el.addEventListener('focusout', onListFocusOut);
+    return () => el.removeEventListener('focusout', onListFocusOut);
   });
 
   $effect(() => {

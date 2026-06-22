@@ -1,11 +1,11 @@
-export type Mod = Awaited<
-  ReturnType<typeof import("./index").ListMods>
+export type Mod = NonNullable<
+  Awaited<ReturnType<typeof import("./index").ListMods>>
 >[number];
-export type Profile = Awaited<
-  ReturnType<typeof import("./index").ListProfiles>
+export type Profile = NonNullable<
+  Awaited<ReturnType<typeof import("./index").ListProfiles>>
 >[number];
-export type Category = Awaited<
-  ReturnType<typeof import("./index").ListCategories>
+export type Category = NonNullable<
+  Awaited<ReturnType<typeof import("./index").ListCategories>>
 >[number];
 export type Settings = Awaited<
   ReturnType<typeof import("./index").GetSettings>
@@ -21,13 +21,14 @@ export type InstallOptions = {
   overwriteTargets?: Record<string, string>;
 };
 
+import type { InstallDependencyPreview } from "$lib/mods/dependencies";
 import * as API from "./index";
 import { dedupeMods } from "$lib/mods/dedupe";
 
 export const USE_MOCK_DATA = import.meta.env.VITE_USE_MOCK_DATA === "true";
 
-export type UnmanagedMod = Awaited<
-  ReturnType<typeof import("./index").ListUnmanagedMods>
+export type UnmanagedMod = NonNullable<
+  Awaited<ReturnType<typeof import("./index").ListUnmanagedMods>>
 >[number];
 
 /** Grid + shell data — everything needed to show the library. */
@@ -56,6 +57,9 @@ export async function refreshCore(state: {
       API.GetSMAPIVersion(),
     ]);
 
+  if (profiles === null || categories === null) {
+    throw new Error("App failed to initialize — profiles or categories unavailable");
+  }
   return {
     mods: dedupeMods(mods ?? []),
     profiles,
@@ -110,13 +114,18 @@ export async function fetchLibraryMods() {
   return dedupeMods((await API.ListMods("", "none")) ?? []);
 }
 
-export async function previewInstallDependencies(paths: string[]) {
+export async function previewInstallDependencies(
+  paths: string[],
+): Promise<InstallDependencyPreview[]> {
   if (USE_MOCK_DATA) {
     const { getMockInstallDependencyPreview } =
       await import("$lib/mock/designData");
-    return getMockInstallDependencyPreview(paths);
+    return getMockInstallDependencyPreview(paths) ?? [];
   }
-  return API.PreviewInstallDependencies(paths) ?? [];
+  return ((await API.PreviewInstallDependencies(paths)) ?? []).map((p) => ({
+    ...p,
+    issues: p.issues ?? [],
+  }));
 }
 
 export async function setModEnabled(modId: string, enabled: boolean) {

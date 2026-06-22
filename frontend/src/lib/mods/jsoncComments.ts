@@ -5,7 +5,8 @@ import {
   ViewPlugin,
   type ViewUpdate,
 } from "@codemirror/view";
-import { createScanner, SyntaxKind } from "jsonc-parser";
+import { createScanner } from "jsonc-parser";
+import { SyntaxKind } from "$lib/mods/jsoncEnums";
 
 const commentMark = Decoration.mark({ class: "cm-jsonc-comment" });
 

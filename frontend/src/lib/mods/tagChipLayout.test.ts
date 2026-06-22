@@ -9,6 +9,7 @@ function cat(id: string, name: string): Category {
     color: "#6366f1",
     visible: true,
     sortOrder: 0,
+    modIds: null,
   };
 }
 

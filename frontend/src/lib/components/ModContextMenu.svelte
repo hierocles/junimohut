@@ -26,7 +26,7 @@
 
   const hasSavedDownload = $derived(!!mod?.savedDownloadPath?.trim());
   const hasNexus = $derived(
-    mod?.manifest?.UpdateKeys?.some((k) => k.startsWith("Nexus:")) ?? false,
+    mod?.manifest?.UpdateKeys?.some((k: string) => k.startsWith("Nexus:")) ?? false,
   );
 
   const menuPos = $derived({
@@ -109,7 +109,7 @@
         <button
           type="button"
           class="overlay-menu-item truncate"
-          class:overlay-menu-item--danger={item.danger}
+          class:overlay-menu-item--danger={'danger' in item && item.danger}
           role="menuitem"
           onclick={() => onaction(item.action)}
         >

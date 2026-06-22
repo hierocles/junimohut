@@ -426,7 +426,9 @@
         );
         namePreviews = getMockInstallNamePreview([...paths]);
       } else {
-        namePreviews = (await API.PreviewInstallNames([...paths])) ?? [];
+        namePreviews = ((await API.PreviewInstallNames([...paths])) ?? []).map(
+          (p) => ({ ...p, mods: p.mods ?? [] }),
+        );
       }
     } catch {
       namePreviews = [];

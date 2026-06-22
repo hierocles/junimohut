@@ -1,6 +1,6 @@
 /** User-facing strings and small copy helpers (i18n fallbacks until translations load). */
 
-import { ParseErrorCode } from "jsonc-parser";
+import { ParseErrorCode } from "$lib/mods/jsoncEnums";
 
 export function formatUserError(error: unknown): string {
   if (error && typeof error === "object") {
@@ -901,7 +901,7 @@ export const configEditorLoadingFileAria = "Loading config file";
 export const configEditorJsoncHint =
   "Comments and trailing commas are allowed.";
 
-export function jsoncParseErrorMessage(code: ParseErrorCode): string {
+export function jsoncParseErrorMessage(code: number): string {
   switch (code) {
     case ParseErrorCode.InvalidSymbol:
       return "Invalid character here.";

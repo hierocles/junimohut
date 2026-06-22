@@ -31,6 +31,8 @@ describe("resolveArchiveMod", () => {
       message: "",
     },
     hasConfig: false,
+    hasJsonFiles: false,
+    jsonFileCount: 0,
     isCoreMod: false,
     installTime: 0,
     lastUpdated: 0,
