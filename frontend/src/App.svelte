@@ -142,7 +142,7 @@
   let selectedModId = $state<string | null>(null);
   let settingsOpen = $state(false);
   let downloadsOpen = $state(false);
-  let downloads = $state<Awaited<ReturnType<typeof API.ListDownloads>>>([]);
+  let downloads = $state<NonNullable<Awaited<ReturnType<typeof API.ListDownloads>>>>([]);
   let savedDownloads = $state<SavedDownloadRecord[]>([]);
   let downloadsPaneWidth = $state(loadDownloadsPaneWidth());
   let nexusConnected = $state(false);
@@ -585,6 +585,7 @@
     void checkSMAPIUpdate();
     Events.On("mods-changed", () => {
       if (loading) return;
+      lastLoadKey = "";
       void load();
     });
     Events.On("nxm-url", (ev) => {
@@ -776,12 +777,20 @@
     const nexusModId = parseNxmModId(url);
     const modIds = nexusModId ? [nexusModId] : [];
     pendingNexusModIds = modIds;
+    const targetMod =
+      nexusModId != null && nexusModId > 0
+        ? (libraryMods.find((m) =>
+            m.manifest?.UpdateKeys?.some(
+              (k: string) => nexusModIdFromUpdateKey(k) === nexusModId,
+            ),
+          ) ?? null)
+        : null;
     try {
       setStatus(downloadingModFromNexus, "default", { progress: true });
       startDownloadPolling();
       const rpcPath = await API.HandleNXMURL(url);
       const path = await resolveDownloadedArchivePath(rpcPath);
-      if (!openNexusInstallModal(path, modIds)) {
+      if (!openNexusInstallModal(path, modIds, targetMod)) {
         setError(downloadNoArchivePath);
         return;
       }
@@ -789,7 +798,7 @@
       await refreshDownloads();
     } catch (e) {
       const path = await resolveDownloadedArchivePath(undefined);
-      if (openNexusInstallModal(path, modIds)) {
+      if (openNexusInstallModal(path, modIds, targetMod)) {
         setStatus(downloadCompleteReview, "success");
       } else {
         setError(e);
@@ -1132,7 +1141,7 @@
           detailPane?.focusDisplayNameInput();
           break;
         case "openPage": {
-          const key = mod.manifest?.UpdateKeys?.find((k) =>
+          const key = mod.manifest?.UpdateKeys?.find((k: string) =>
             k.startsWith("Nexus:"),
           );
           if (key) {
@@ -1144,7 +1153,7 @@
           break;
         }
         case "endorse": {
-          const key = mod.manifest?.UpdateKeys?.find((k) =>
+          const key = mod.manifest?.UpdateKeys?.find((k: string) =>
             k.startsWith("Nexus:"),
           );
           if (key) await API.EndorseMod(key, mod.manifest.Version);
@@ -1152,7 +1161,7 @@
           break;
         }
         case "downloadUpdate": {
-          const key = mod.manifest?.UpdateKeys?.find((k) =>
+          const key = mod.manifest?.UpdateKeys?.find((k: string) =>
             k.startsWith("Nexus:"),
           );
           if (!key) {

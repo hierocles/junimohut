@@ -266,7 +266,10 @@ export function dependencyRowsForMod(
       minimumVersion: entry.minimumVersion,
       isRequired: entry.isRequired,
       isContentPack: entry.isContentPack,
-      state: entry.isRequired ? "missing" : "optional",
+      // No backend issue means the dep is satisfied; the provider is just filtered
+      // out of the current grid view. Only optional deps stay "optional" here
+      // because the backend doesn't track optional-missing as an issue.
+      state: entry.isRequired ? "satisfied" : "optional",
     };
   });
 }
