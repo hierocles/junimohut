@@ -25,11 +25,6 @@ export interface Settings {
     "showThumbnails": boolean;
     "autoSaveProfileChanges": boolean;
     "alwaysAskDeleteOnUpdate": boolean;
-
-    /**
-     * folder, contentpack, folder_condensed
-     */
-    "modGrouping": string;
     "hideDisabledFilter": string;
     "visibleColumns": string[] | null;
     "windowWidth": number;

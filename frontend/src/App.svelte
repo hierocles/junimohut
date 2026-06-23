@@ -71,6 +71,7 @@
     deleteModsBatchConfirmTitle,
     deleteModsBatchConfirmMessage,
     deleteModsBatchConfirmLabel,
+    deleteBundleConfirmMessage,
     deleteModDeleteArchiveLabel,
     deleteModDeleteArchiveHint,
     deleteModDeleteArchiveNoneHint,
@@ -105,6 +106,14 @@
   import { openExternalUrl } from "$lib/wails/openExternalUrl";
   import type { GridStatusFilter } from "$lib/mods/filter";
   import { displayModName } from "$lib/mods/names";
+  import {
+    bundleDeleteFolderPaths,
+    bundleUpdateTarget,
+    configTargetMod,
+    findModInList,
+    isBundleChildMod,
+    isBundleMod,
+  } from "$lib/mods/bundles";
   import type { SavedDownloadRecord } from "$lib/mods/savedDownloads";
   import { applyDocumentTheme } from "$lib/themes/applyDocumentTheme";
   import {
@@ -157,6 +166,9 @@
   let renamingProfileName = $state("");
   let smapiUpdateAvailable = $state<string | null>(null);
   let contextMod = $state<Mod | null>(null);
+  const contextSuppressUpdateActions = $derived(
+    contextMod != null && isBundleChildMod(mods, contextMod),
+  );
   let detailPane = $state<{ focusDisplayNameInput: () => void } | undefined>();
   let contextPos = $state({ x: 0, y: 0 });
   let loading = $state(false);
@@ -402,6 +414,14 @@
     if (!pendingConfirm) return "";
     switch (pendingConfirm.kind) {
       case "delete-mod":
+        if (isBundleMod(pendingConfirm.mod)) {
+          return deleteBundleConfirmMessage(
+            displayModName(pendingConfirm.mod),
+            pendingConfirm.mod.bundleChildren?.length ??
+              pendingConfirm.mod.enabledTotal ??
+              0,
+          );
+        }
         return deleteModConfirmMessage(displayModName(pendingConfirm.mod));
       case "delete-mods-batch":
         return deleteModsBatchConfirmMessage(pendingConfirm.mods.length);
@@ -838,7 +858,7 @@
     const targets = enabled
       ? ids
       : ids.filter((id) => {
-          const mod = mods.find((m) => m.id === id);
+          const mod = findModInList(mods, id);
           return mod && !mod.isCoreMod;
         });
     if (!targets.length) return;
@@ -890,9 +910,10 @@
   }
 
   async function openConfigEditor(mod: Mod) {
-    if (!mod.hasJsonFiles) return;
+    const target = configTargetMod(mod);
+    if (!target?.hasJsonFiles) return;
     try {
-      await API.OpenModConfigEditor(mod.id);
+      await API.OpenModConfigEditor(target.id);
     } catch (e) {
       setError(e);
     }
@@ -1168,19 +1189,20 @@
           break;
         }
         case "ignoreUpdate":
-          await API.SetModUpdateIgnored(mod.id, true);
+          await API.SetModUpdateIgnored(bundleUpdateTarget(mods, mod).id, true);
           lastLoadKey = "";
           await load();
           setStatus(modUpdateIgnoredMessage, "success");
           break;
         case "resumeUpdate":
-          await API.SetModUpdateIgnored(mod.id, false);
+          await API.SetModUpdateIgnored(bundleUpdateTarget(mods, mod).id, false);
           lastLoadKey = "";
           await load();
           setStatus(modUpdateResumedMessage, "success");
           break;
         case "downloadUpdate": {
-          const key = mod.manifest?.UpdateKeys?.find((k: string) =>
+          const updateMod = bundleUpdateTarget(mods, mod);
+          const key = updateMod.manifest?.UpdateKeys?.find((k: string) =>
             k.startsWith("Nexus:"),
           );
           if (!key) {
@@ -1195,30 +1217,30 @@
           pendingNexusModIds = modIds;
           try {
             setStatus(
-              downloadingUpdateForMessage(displayModName(mod)),
+              downloadingUpdateForMessage(displayModName(updateMod)),
               "default",
               { progress: true },
             );
             startDownloadPolling();
             const rpcPath = await API.DownloadModUpdate(
               key,
-              displayModName(mod),
+              displayModName(updateMod),
             );
             const path = await resolveDownloadedArchivePath(rpcPath);
-            if (!openNexusInstallModal(path, modIds, mod)) {
+            if (!openNexusInstallModal(path, modIds, updateMod)) {
               setError(downloadNoArchivePath);
               break;
             }
             setStatus(
-              updateDownloadedForMessage(displayModName(mod)),
+              updateDownloadedForMessage(displayModName(updateMod)),
               "success",
             );
             await refreshDownloads();
           } catch (e) {
             const path = await resolveDownloadedArchivePath(undefined);
-            if (openNexusInstallModal(path, modIds, mod)) {
+            if (openNexusInstallModal(path, modIds, updateMod)) {
               setStatus(
-                updateDownloadedForMessage(displayModName(mod)),
+                updateDownloadedForMessage(displayModName(updateMod)),
                 "success",
               );
             } else {
@@ -1301,15 +1323,33 @@
     pendingConfirm = { kind: "delete-mods-batch", mods: targets };
   }
 
+  function deleteFolderPathsForMods(modsToDelete: Mod[]): string[] {
+    const paths = new Set<string>();
+    for (const mod of modsToDelete) {
+      for (const path of bundleDeleteFolderPaths(mod)) {
+        paths.add(path);
+      }
+    }
+    return [...paths];
+  }
+
   async function confirmPending() {
     if (!pendingConfirm || confirmBusy) return;
     confirmBusy = true;
     try {
       if (pendingConfirm.kind === "delete-mod") {
-        await API.DeleteMod(
-          pendingConfirm.mod.folderPath,
-          deleteModArchivesToo,
-        );
+        const folderPaths = deleteFolderPathsForMods([pendingConfirm.mod]);
+        if (folderPaths.length === 1) {
+          await API.DeleteMod(folderPaths[0], deleteModArchivesToo);
+        } else {
+          const result = await API.DeleteMods(
+            folderPaths,
+            deleteModArchivesToo,
+          );
+          if (result.errors?.length) {
+            setError(new Error(result.errors[0]));
+          }
+        }
         if (selectedModId === pendingConfirm.mod.id) selectedModId = null;
         setStatus(
           deletedModMessage(displayModName(pendingConfirm.mod)),
@@ -1319,7 +1359,7 @@
       } else if (pendingConfirm.kind === "delete-mods-batch") {
         const deletedIds = new Set(pendingConfirm.mods.map((m) => m.id));
         const result = await API.DeleteMods(
-          pendingConfirm.mods.map((m) => m.folderPath),
+          deleteFolderPathsForMods(pendingConfirm.mods),
           deleteModArchivesToo,
         );
         if (selectedModId && deletedIds.has(selectedModId))
@@ -2201,6 +2241,7 @@
   mod={contextMod}
   x={contextPos.x}
   y={contextPos.y}
+  suppressUpdateActions={contextSuppressUpdateActions}
   onaction={(action) => contextMod && runContextAction(contextMod, action)}
   onclose={() => (contextMod = null)}
 />

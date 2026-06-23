@@ -6,6 +6,7 @@ import {
   countModsWithDependencyIssues,
 } from "$lib/mods/dependencies";
 import { pathBasename } from "$lib/copy";
+import { collapseDisplayMods } from "$lib/mods/bundles";
 import type { Profile } from "../../../bindings/junimohut/internal/profiles/models";
 import type { Settings } from "../../../bindings/junimohut/internal/config/models";
 import type { DownloadRecord } from "../../../bindings/junimohut/internal/nexus/models";
@@ -373,24 +374,8 @@ const MOD_SEEDS: ModSeed[] = [
   },
 ];
 
-function groupForMod(
-  folderPath: string,
-  grouping = "folder",
-): { key: string; label: string } {
-  const parts = folderPath.split("/");
-  if (grouping === "folder_condensed" && parts.length > 1) {
-    return { key: `folder:${parts[0]}`, label: parts[0] };
-  }
-  if (parts.length > 1) {
-    const parent = parts.slice(0, -1).join("/");
-    return { key: `folder:${parent}`, label: parent };
-  }
-  return { key: "root", label: "Root" };
-}
-
 function buildMod(seed: ModSeed, enabledOverrides: Map<string, boolean>): Mod {
   const id = `${seed.folderPath}::${seed.uniqueID}`;
-  const group = groupForMod(seed.folderPath);
   const enabled = enabledOverrides.get(id) ?? seed.enabled ?? true;
 
   return {
@@ -424,8 +409,6 @@ function buildMod(seed: ModSeed, enabledOverrides: Map<string, boolean>): Mod {
     },
     enabled: seed.isCoreMod ? true : enabled,
     categoryIds: [DEFAULT_TAG_IDS[seed.category]],
-    groupKey: group.key,
-    groupLabel: group.label,
     updateStatus: seed.incompatible
       ? {
           state: "incompatible",
@@ -485,8 +468,10 @@ const enabledOverrides = new Map<string, boolean>();
 const customNameOverrides = new Map<string, string>();
 
 function allMods(): Mod[] {
-  return resolveDependencies(
-    MOD_SEEDS.map((seed) => buildMod(seed, enabledOverrides)),
+  return collapseDisplayMods(
+    resolveDependencies(
+      MOD_SEEDS.map((seed) => buildMod(seed, enabledOverrides)),
+    ),
   );
 }
 
@@ -531,7 +516,6 @@ export const MOCK_SETTINGS: Settings = {
   showThumbnails: false,
   autoSaveProfileChanges: true,
   alwaysAskDeleteOnUpdate: false,
-  modGrouping: "folder",
   hideDisabledFilter: "none",
   visibleColumns: [
     "enabled",

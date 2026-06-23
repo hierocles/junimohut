@@ -17,7 +17,6 @@ func TestUserLibraryScanBench(t *testing.T) {
 	list, err := s.Scan(ScanOptions{
 		ModsRoot:            root,
 		IgnoreHiddenFolders: true,
-		Grouping:            "folder",
 	})
 	if err != nil {
 		t.Fatal(err)

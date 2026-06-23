@@ -38,6 +38,13 @@
   } from "$lib/copy";
   import { nexusModPageUrl, nexusSearchUrl } from "$lib/mods/dependencies";
   import { openExternalUrl } from "$lib/wails/openExternalUrl";
+  import {
+    bundlePartTypeLabel,
+    findModInList,
+    isBundleChildMod,
+    isBundleMod,
+  } from "$lib/mods/bundles";
+  import { detailBundlePartsHeading } from "$lib/copy";
 
   type Tab = "general" | "dependencies" | "dependents" | "update";
 
@@ -78,7 +85,21 @@
   const mod = $derived.by(() => {
     const id = selectedModId;
     if (!id) return null;
-    return mods.find((m) => m.id === id) ?? null;
+    return findModInList(mods, id) ?? null;
+  });
+
+  const bundleParent = $derived.by(() => {
+    const id = selectedModId;
+    if (!id) return null;
+    for (const entry of mods) {
+      if (
+        isBundleMod(entry) &&
+        entry.bundleChildren?.some((child) => child.id === id)
+      ) {
+        return entry;
+      }
+    }
+    return mod != null && isBundleMod(mod) ? mod : null;
   });
 
   let activeTab = $state<Tab>("general");
@@ -111,8 +132,13 @@
     mod?.missingDependencyCount ?? mod?.dependencyIssues?.length ?? 0,
   );
   const hasDependents = $derived(dependentRows.length > 0);
+  const isBundleChild = $derived(
+    mod != null && isBundleChildMod(mods, mod),
+  );
+
   const hasUpdateTab = $derived(
-    mod != null &&
+    !isBundleChild &&
+      mod != null &&
       (mod.updateStatus?.state === "update" ||
         mod.updateStatus?.state === "update_available" ||
         mod.updateStatus?.state === "update_ignored" ||
@@ -123,16 +149,18 @@
   );
 
   const canIgnoreUpdate = $derived(
-    mod != null &&
+    !isBundleChild &&
+      mod != null &&
       (mod.updateStatus?.state === "update" ||
         mod.updateStatus?.state === "update_available"),
   );
   const canResumeUpdate = $derived(
-    mod?.updateStatus?.state === "update_ignored",
+    !isBundleChild && mod?.updateStatus?.state === "update_ignored",
   );
 
   const canDownload = $derived(
-    mod != null &&
+    !isBundleChild &&
+      mod != null &&
       (mod.updateStatus?.state === "update" ||
         mod.updateStatus?.state === "update_available") &&
       (mod.manifest?.UpdateKeys?.some((k) => k.startsWith("Nexus:")) ?? false),
@@ -633,21 +661,46 @@
                 </dl>
               </section>
 
-              <section class="info-col">
-                <h3 class="col-heading type-label">Group</h3>
-                <dl class="field-list">
-                  <div class="field-row">
-                    <dt>Label</dt>
-                    <dd>{mod.groupLabel || "—"}</dd>
-                  </div>
-                  <div class="field-row">
-                    <dt>Key</dt>
-                    <dd class="type-mono text-surface-400">
-                      {mod.groupKey || "—"}
-                    </dd>
-                  </div>
-                </dl>
-              </section>
+              {#if bundleParent && (bundleParent.bundleChildren?.length ?? 0) > 0}
+                <section class="info-col info-col--wide">
+                  <h3 class="col-heading type-label">
+                    {detailBundlePartsHeading}
+                  </h3>
+                  <ul class="bundle-parts-list">
+                    {#each bundleParent.bundleChildren ?? [] as part (part.id)}
+                      <li class="bundle-part-row">
+                        <button
+                          type="button"
+                          class="bundle-part-btn"
+                          class:bundle-part-btn--active={part.id === mod?.id}
+                          onclick={() => onselectmod?.(part.id)}
+                        >
+                          <span class="bundle-part-name"
+                            >{displayModName(part)}</span
+                          >
+                          <span class="bundle-part-type type-caption type-meta">
+                            {bundlePartTypeLabel(part)}
+                          </span>
+                          <span
+                            class="bundle-part-folder type-caption type-meta truncate"
+                          >
+                            {part.folderPath}
+                          </span>
+                        </button>
+                        {#if oneditconfig && (part.hasJsonFiles || part.hasConfig)}
+                          <button
+                            type="button"
+                            class="bundle-part-config btn btn-sm preset-tonal"
+                            onclick={() => void oneditconfig(part)}
+                          >
+                            {configEditorEditConfig}
+                          </button>
+                        {/if}
+                      </li>
+                    {/each}
+                  </ul>
+                </section>
+              {/if}
 
               <section class="info-col">
                 <h3 class="col-heading type-label">Dates</h3>
@@ -1118,5 +1171,66 @@
     .detail-tab {
       transition: none;
     }
+  }
+
+  .info-col--wide {
+    grid-column: 1 / -1;
+  }
+
+  .bundle-parts-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .bundle-part-row {
+    display: flex;
+    align-items: stretch;
+    gap: var(--space-2);
+  }
+
+  .bundle-part-config {
+    flex-shrink: 0;
+    align-self: center;
+  }
+
+  .bundle-part-btn {
+    flex: 1;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--space-1) var(--space-3);
+    width: 100%;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--sdvm-border);
+    border-radius: var(--radius-base, 0.25rem);
+    background: color-mix(in oklab, var(--sdvm-raised) 70%, transparent);
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .bundle-part-btn--active {
+    border-color: color-mix(
+      in oklab,
+      var(--color-primary-500) 45%,
+      var(--sdvm-border)
+    );
+    background: color-mix(
+      in oklab,
+      var(--color-primary-500) 10%,
+      var(--sdvm-raised)
+    );
+  }
+
+  .bundle-part-name {
+    font-weight: var(--weight-semibold);
+    color: var(--color-surface-100);
+  }
+
+  .bundle-part-folder {
+    grid-column: 1 / -1;
   }
 </style>

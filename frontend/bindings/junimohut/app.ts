@@ -180,10 +180,6 @@ export function ListDownloads(): $CancellablePromise<nexus$0.DownloadEntry[] | n
     return $Call.ByID(2520899730);
 }
 
-export function ListModGroups(search: string, hideDisabled: string): $CancellablePromise<mods$0.ModGroup[] | null> {
-    return $Call.ByID(3343994023, search, hideDisabled);
-}
-
 export function ListModJsonFiles(modID: string): $CancellablePromise<mods$0.ModJsonFileNode[] | null> {
     return $Call.ByID(407545920, modID);
 }

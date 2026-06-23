@@ -20,6 +20,11 @@ func (a *App) modByID(modID string) (mods.Mod, bool) {
 		if mod.ID == modID {
 			return mod, true
 		}
+		for _, child := range mod.BundleChildren {
+			if child.ID == modID {
+				return child, true
+			}
+		}
 	}
 	return mods.Mod{}, false
 }
@@ -39,6 +44,50 @@ func (a *App) modHasJsonFiles(mod mods.Mod) bool {
 	return mods.CountJsonFiles(a.modDirForJSON(mod, settings.ModsRoot)) > 0
 }
 
+func (a *App) resolveConfigMod(modID string) (mods.Mod, bool) {
+	mod, ok := a.modByID(modID)
+	if !ok {
+		return mods.Mod{}, false
+	}
+	if a.modHasJsonFiles(mod) {
+		return mod, true
+	}
+	parent, ok := a.bundleParentFor(modID)
+	if !ok || len(parent.BundleChildren) == 0 {
+		return mod, ok
+	}
+	settings := a.store.Get()
+	for _, child := range parent.BundleChildren {
+		if a.modHasJsonFiles(child) {
+			return child, true
+		}
+		if mods.CountJsonFiles(a.modDirForJSON(child, settings.ModsRoot)) > 0 {
+			return child, true
+		}
+	}
+	return mod, ok
+}
+
+func (a *App) resolveUpdateMod(modID string) (mods.Mod, bool) {
+	return a.bundleParentFor(modID)
+}
+
+func (a *App) bundleParentFor(modID string) (mods.Mod, bool) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	for _, mod := range a.modsCache {
+		if mod.ID == modID {
+			return mod, true
+		}
+		for _, child := range mod.BundleChildren {
+			if child.ID == modID {
+				return mod, true
+			}
+		}
+	}
+	return mods.Mod{}, false
+}
+
 func (a *App) ListModsWithJsonFiles() []mods.ModJsonSummary {
 	if err := a.ensureInit(); err != nil {
 		return nil
@@ -48,28 +97,35 @@ func (a *App) ListModsWithJsonFiles() []mods.ModJsonSummary {
 	settings := a.store.Get()
 	out := make([]mods.ModJsonSummary, 0)
 	for _, mod := range a.modsCache {
-		count := mod.JsonFileCount
-		if count == 0 {
-			count = mods.CountJsonFiles(a.modDirForJSON(mod, settings.ModsRoot))
+		a.appendModJsonSummary(&out, mod, settings.ModsRoot)
+		for _, child := range mod.BundleChildren {
+			a.appendModJsonSummary(&out, child, settings.ModsRoot)
 		}
-		if count == 0 {
-			continue
-		}
-		out = append(out, mods.ModJsonSummary{
-			ModID:         mod.ID,
-			ModName:       mod.Manifest.Name,
-			FolderPath:    mod.FolderPath,
-			JsonFileCount: count,
-		})
 	}
 	return out
+}
+
+func (a *App) appendModJsonSummary(out *[]mods.ModJsonSummary, mod mods.Mod, modsRoot string) {
+	count := mod.JsonFileCount
+	if count == 0 {
+		count = mods.CountJsonFiles(a.modDirForJSON(mod, modsRoot))
+	}
+	if count == 0 {
+		return
+	}
+	*out = append(*out, mods.ModJsonSummary{
+		ModID:         mod.ID,
+		ModName:       mod.Manifest.Name,
+		FolderPath:    mod.FolderPath,
+		JsonFileCount: count,
+	})
 }
 
 func (a *App) ListModJsonFiles(modID string) ([]mods.ModJsonFileNode, error) {
 	if err := a.ensureInit(); err != nil {
 		return nil, err
 	}
-	mod, ok := a.modByID(modID)
+	mod, ok := a.resolveConfigMod(modID)
 	if !ok {
 		return nil, fmt.Errorf("mod not found")
 	}
@@ -85,7 +141,7 @@ func (a *App) modConfigFileView(modID, relPath string) (mods.ModConfigView, erro
 	if err := a.ensureInit(); err != nil {
 		return mods.ModConfigView{}, err
 	}
-	mod, ok := a.modByID(modID)
+	mod, ok := a.resolveConfigMod(modID)
 	if !ok {
 		return mods.ModConfigView{}, fmt.Errorf("mod not found")
 	}
@@ -139,7 +195,7 @@ func (a *App) SaveModConfigFile(modID, relPath, content string) error {
 	if err := a.ensureInit(); err != nil {
 		return err
 	}
-	mod, ok := a.modByID(modID)
+	mod, ok := a.resolveConfigMod(modID)
 	if !ok {
 		return fmt.Errorf("mod not found")
 	}
@@ -190,7 +246,7 @@ func (a *App) OpenModConfigEditorFile(modID, relPath string) error {
 	if a.app == nil {
 		return fmt.Errorf("application not ready")
 	}
-	mod, ok := a.modByID(modID)
+	mod, ok := a.resolveConfigMod(modID)
 	if !ok {
 		return fmt.Errorf("mod not found")
 	}
@@ -198,18 +254,18 @@ func (a *App) OpenModConfigEditorFile(modID, relPath string) error {
 		return fmt.Errorf("this mod has no JSON files")
 	}
 
-	view, err := a.modConfigFileView(modID, relPath)
+	view, err := a.modConfigFileView(mod.ID, relPath)
 	if err != nil {
 		return err
 	}
 	title := configEditorWindowTitle(view.ModName, filepath.Base(view.RelPath))
-	editorURL := configEditorURL(modID, view.RelPath)
+	editorURL := configEditorURL(mod.ID, view.RelPath)
 
 	a.configEditorMu.Lock()
 	defer a.configEditorMu.Unlock()
 
 	if a.configEditorWindow != nil {
-		a.configEditorModID = modID
+		a.configEditorModID = mod.ID
 		a.configEditorWindow.SetTitle(title)
 		a.configEditorWindow.EmitEvent("config-editor-open-mod", map[string]string{
 			"modId":   modID,
@@ -243,7 +299,7 @@ func (a *App) OpenModConfigEditorFile(modID, relPath string) error {
 		a.configEditorMu.Unlock()
 	})
 	a.configEditorWindow = w
-	a.configEditorModID = modID
+	a.configEditorModID = mod.ID
 	return nil
 }
 

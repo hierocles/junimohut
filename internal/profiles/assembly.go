@@ -28,6 +28,7 @@ func (a *Assembler) Assemble(modList []mods.Mod, enabled map[string]bool) error 
 	}
 
 	desired := map[string]string{}
+	modList = mods.ExpandModsForAssembly(modList)
 	for _, m := range modList {
 		en := true
 		if enabled != nil {

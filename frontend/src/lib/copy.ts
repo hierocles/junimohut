@@ -388,6 +388,27 @@ export function gridBulkDeleteLabel(count: number): string {
   return count === 1 ? "Delete selected" : `Delete ${count} selected`;
 }
 
+export function gridBundlePartsLabel(count: number): string {
+  return count === 1 ? "1 part" : `${count} parts`;
+}
+
+export const gridBundleExpandLabel = "Expand bundle parts";
+export const gridBundleCollapseLabel = "Collapse bundle parts";
+
+export const detailBundlePartsHeading = "Parts";
+
+export const detailBundlePartTypeDll = "C#";
+export const detailBundlePartTypeCP = "CP";
+export const detailBundlePartTypeAT = "AT";
+export const detailBundlePartTypeMod = "Mod";
+
+export function deleteBundleConfirmMessage(
+  name: string,
+  count: number,
+): string {
+  return `“${name}” and all ${count} installed parts will be removed from your Mods folder. This cannot be undone.`;
+}
+
 export const deleteModDeleteArchiveLabel = "Also delete saved archive";
 
 export function deleteModDeleteArchiveHint(count: number): string {

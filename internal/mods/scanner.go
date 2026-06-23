@@ -11,7 +11,6 @@ type ScanOptions struct {
 	ModsRoot            string
 	IgnoreHiddenFolders bool
 	EnabledMods         map[string]bool
-	Grouping            string
 	SkipPackCollapse    bool
 }
 
@@ -105,7 +104,6 @@ func modFromManifest(opts ScanOptions, manifestPath string, seen map[string]bool
 	configPath := filepath.Join(modDir, "config.json")
 	_, hasConfig := os.Stat(configPath)
 	jsonFileCount := CountJsonFiles(modDir)
-	groupKey, groupLabel := groupForMod(rel, manifest, opts.Grouping)
 
 	return Mod{
 		ID:           id,
@@ -113,8 +111,6 @@ func modFromManifest(opts ScanOptions, manifestPath string, seen map[string]bool
 		AbsolutePath: modDir,
 		Manifest:     manifest,
 		Enabled:      enabled,
-		GroupKey:     groupKey,
-		GroupLabel:   groupLabel,
 		UpdateStatus: UpdateStatus{State: "current"},
 		HasConfig:    hasConfig == nil,
 		HasJsonFiles: jsonFileCount > 0,
@@ -136,73 +132,53 @@ func hasHiddenParent(path, root string) bool {
 	return false
 }
 
-func groupForMod(rel string, m Manifest, grouping string) (string, string) {
-	switch grouping {
-	case "contentpack":
-		if m.ContentPackFor != nil {
-			return "cp:" + m.ContentPackFor.UniqueID, "Content Pack: " + m.ContentPackFor.UniqueID
-		}
-		return "mod", "Mods"
-	case "folder_condensed":
-		parts := strings.Split(rel, "/")
-		if len(parts) > 1 {
-			return "folder:" + parts[0], parts[0]
-		}
-		return "root", "Root"
-	default: // folder
-		parts := strings.Split(rel, "/")
-		if len(parts) > 1 {
-			return "folder:" + strings.Join(parts[:len(parts)-1], "/"), strings.Join(parts[:len(parts)-1], "/")
-		}
-		return "root", "Root"
-	}
-}
-
-// GroupMods organizes mods into groups for display.
-func GroupMods(mods []Mod) []ModGroup {
-	order := []string{}
-	groups := map[string]*ModGroup{}
-	seen := map[string]bool{}
-	for _, m := range mods {
-		if seen[m.ID] {
-			continue
-		}
-		seen[m.ID] = true
-		g, ok := groups[m.GroupKey]
-		if !ok {
-			g = &ModGroup{Key: m.GroupKey, Label: m.GroupLabel}
-			groups[m.GroupKey] = g
-			order = append(order, m.GroupKey)
-		}
-		g.Mods = append(g.Mods, m)
-	}
-	result := make([]ModGroup, 0, len(order))
-	for _, k := range order {
-		result = append(result, *groups[k])
-	}
-	return result
-}
-
-// FilterMods applies search and hide-disabled filters.
 func FilterMods(mods []Mod, search, hideDisabled string) []Mod {
 	search = strings.ToLower(strings.TrimSpace(search))
 	var out []Mod
 	for _, m := range mods {
-		if hideDisabled == "enabled" && !m.Enabled {
+		if !modMatchesListFilters(m, search, hideDisabled) {
 			continue
-		}
-		if hideDisabled == "disabled" && m.Enabled {
-			continue
-		}
-		if search != "" {
-			hay := strings.ToLower(m.Manifest.Name + " " + m.CustomName + " " + m.Manifest.Author + " " + m.Manifest.UniqueID + " " + m.FolderPath)
-			if !strings.Contains(hay, search) {
-				continue
-			}
 		}
 		out = append(out, m)
 	}
 	return out
+}
+
+func modMatchesListFilters(m Mod, search, hideDisabled string) bool {
+	if len(m.BundleChildren) > 0 {
+		if search != "" {
+			for _, child := range m.BundleChildren {
+				if modMatchesListFilters(child, search, "") {
+					return true
+				}
+			}
+			return false
+		}
+		switch hideDisabled {
+		case "enabled":
+			return m.EnabledCount > 0
+		case "disabled":
+			return m.EnabledCount < m.EnabledTotal
+		default:
+			return true
+		}
+	}
+
+	switch hideDisabled {
+	case "enabled":
+		if !m.Enabled {
+			return false
+		}
+	case "disabled":
+		if m.Enabled {
+			return false
+		}
+	}
+	if search == "" {
+		return true
+	}
+	hay := strings.ToLower(m.Manifest.Name + " " + m.CustomName + " " + m.Manifest.Author + " " + m.Manifest.UniqueID + " " + m.FolderPath)
+	return strings.Contains(hay, search)
 }
 
 // CategoryVisibility drives tag filtering in the mod list.

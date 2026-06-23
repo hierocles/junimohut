@@ -206,11 +206,31 @@ func (a *App) ProcessCommandLineArgs(args []string) {
 	}
 }
 
+func (a *App) migrateBundleTagAssignments(list []mods.Mod) {
+	for _, m := range list {
+		if len(m.BundleChildren) == 0 {
+			continue
+		}
+		for _, child := range m.BundleChildren {
+			for _, catID := range a.categories.ModCategoryIDs(child.ID) {
+				if err := a.categories.AssignMod(catID, m.ID); err != nil {
+					continue
+				}
+				_ = a.categories.UnassignMod(catID, child.ID)
+			}
+		}
+	}
+}
+
 func (a *App) refreshCategoryIDs() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	for i := range a.modsCache {
 		a.modsCache[i].CategoryIDs = a.categories.ModCategoryIDs(a.modsCache[i].ID)
+		for j := range a.modsCache[i].BundleChildren {
+			childID := a.modsCache[i].BundleChildren[j].ID
+			a.modsCache[i].BundleChildren[j].CategoryIDs = a.categories.ModCategoryIDs(childID)
+		}
 	}
 }
 
@@ -224,12 +244,15 @@ func (a *App) refreshMods() error {
 		ModsRoot:            settings.ModsRoot,
 		IgnoreHiddenFolders: settings.IgnoreHiddenFolders,
 		EnabledMods:         enabled,
-		Grouping:            settings.ModGrouping,
 		SkipPackCollapse:    true,
 	})
 	if err != nil {
 		return err
 	}
+	a.enrichModTimes(list)
+	list = mods.CollapseSiblingPacks(list, settings.ModsRoot, enabled)
+	mods.StripBundleChildUpdateStatus(list)
+	a.migrateBundleTagAssignments(list)
 	for i := range list {
 		list[i].CategoryIDs = a.categories.ModCategoryIDs(list[i].ID)
 		list[i].CustomName = mods.EffectiveCustomName(
@@ -239,9 +262,20 @@ func (a *App) refreshMods() error {
 			mods.DisplayNameOfficial,
 		)
 		list[i].ContainsOverwrites = a.overwriteMerges.ContainsOverwrites(list[i].ID)
+		if len(list[i].BundleChildren) > 0 {
+			for j := range list[i].BundleChildren {
+				child := &list[i].BundleChildren[j]
+				child.CategoryIDs = a.categories.ModCategoryIDs(child.ID)
+				child.CustomName = mods.EffectiveCustomName(
+					a.modNames.Get(child.ID),
+					child.FolderPath,
+					child.Manifest.Name,
+					mods.DisplayNameOfficial,
+				)
+				child.ContainsOverwrites = a.overwriteMerges.ContainsOverwrites(child.ID)
+			}
+		}
 	}
-	a.enrichModTimes(list)
-	list = mods.CollapseSiblingPacks(list, settings.ModsRoot, enabled)
 	list = mods.DedupeByUniqueID(mods.DedupeByID(list))
 	list = mods.ResolveDependencies(list)
 	a.mu.Lock()
@@ -402,14 +436,34 @@ func (a *App) ListMods(search, hideDisabled string) []mods.Mod {
 	return mods.FilterMods(list, search, hideDisabled)
 }
 
-func (a *App) ListModGroups(search, hideDisabled string) []mods.ModGroup {
-	return mods.GroupMods(a.ListMods(search, hideDisabled))
-}
-
 func (a *App) SetModEnabled(modID string, enabled bool) error {
 	if err := a.ensureInit(); err != nil {
 		return err
 	}
+	if bundle, ok := a.modByID(modID); ok && len(bundle.BundleChildren) > 0 {
+		settings := a.store.Get()
+		for _, child := range bundle.BundleChildren {
+			if settings.ProfileSpecificConfigs {
+				if uniqueID := child.Manifest.UniqueID; uniqueID != "" {
+					if enabled {
+						if err := a.configMgr.RestoreModConfig(settings.ModsRoot, child.ID, uniqueID); err != nil {
+							return err
+						}
+					} else if err := a.configMgr.SaveModConfig(settings.ModsRoot, child.ID, uniqueID); err != nil {
+						return err
+					}
+				}
+			}
+		}
+		enabledMap := a.profiles.EnabledMods()
+		mods.MigratePackEnableState(enabledMap, modID, enabled)
+		mods.SetBundleChildrenEnabled(enabledMap, mods.BundleChildIDs(bundle), enabled)
+		if err := a.profiles.SaveEnabledMods(enabledMap); err != nil {
+			return err
+		}
+		return a.refreshMods()
+	}
+
 	settings := a.store.Get()
 	if settings.ProfileSpecificConfigs {
 		if uniqueID := a.modUniqueIDFor(modID); uniqueID != "" {
@@ -881,9 +935,13 @@ func (a *App) CheckModUpdates() ([]smapi.ModUpdateResult, error) {
 				continue
 			}
 			seenNexus[nexusID] = true
-			rep, ok := mods.PickNexusGroupRepresentative(list, nexusID)
-			if !ok {
-				rep = m
+			rep := m
+			if len(m.BundleChildren) > 0 {
+				if childRep, ok := mods.PickNexusGroupRepresentative(m.BundleChildren, nexusID); ok {
+					rep = childRep
+				}
+			} else if groupRep, ok := mods.PickNexusGroupRepresentative(list, nexusID); ok {
+				rep = groupRep
 			}
 			requests = append(requests, smapi.ModUpdateRequest{
 				UniqueID:   rep.Manifest.UniqueID,
@@ -938,6 +996,7 @@ func (a *App) CheckModUpdates() ([]smapi.ModUpdateResult, error) {
 	}
 	mods.PropagateNexusUpdateStatus(a.modsCache)
 	mods.ApplyIgnoredUpdates(a.modsCache, settings.IgnoredModUpdates)
+	mods.StripBundleChildUpdateStatus(a.modsCache)
 	a.mu.Unlock()
 	a.syncModUpdateCache()
 	return results, nil
@@ -947,18 +1006,8 @@ func (a *App) SetModUpdateIgnored(modID string, ignored bool) error {
 	if err := a.ensureInit(); err != nil {
 		return err
 	}
-	a.mu.RLock()
-	var target mods.Mod
-	found := false
-	for _, m := range a.modsCache {
-		if m.ID == modID {
-			target = m
-			found = true
-			break
-		}
-	}
-	a.mu.RUnlock()
-	if !found {
+	target, ok := a.resolveUpdateMod(modID)
+	if !ok {
 		return fmt.Errorf("mod not found")
 	}
 	nexusID := nexus.ModIDFromUpdateKeys(target.Manifest.UpdateKeys)

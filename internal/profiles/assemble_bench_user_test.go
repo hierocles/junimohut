@@ -18,7 +18,6 @@ func TestUserLibraryAssembleBench(t *testing.T) {
 	list, err := mods.NewScanner().Scan(mods.ScanOptions{
 		ModsRoot:            modsRoot,
 		IgnoreHiddenFolders: true,
-		Grouping:            "folder",
 	})
 	if err != nil {
 		t.Fatal(err)

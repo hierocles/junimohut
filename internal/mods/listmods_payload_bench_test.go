@@ -15,7 +15,6 @@ func TestUserLibraryListModsPayloadBench(t *testing.T) {
 	list, err := NewScanner().Scan(ScanOptions{
 		ModsRoot:            root,
 		IgnoreHiddenFolders: true,
-		Grouping:            "folder",
 	})
 	if err != nil {
 		t.Fatal(err)

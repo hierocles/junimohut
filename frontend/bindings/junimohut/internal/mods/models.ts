@@ -131,8 +131,6 @@ export interface Mod {
     "manifest": Manifest;
     "enabled": boolean;
     "categoryIds": string[] | null;
-    "groupKey": string;
-    "groupLabel": string;
     "updateStatus": UpdateStatus;
     "hasConfig": boolean;
     "hasJsonFiles": boolean;
@@ -143,6 +141,11 @@ export interface Mod {
     "dependencyIssues": DependencyIssue[] | null;
     "missingDependencyCount": number;
     "packSiblingUIDs"?: string[] | null;
+    "bundleChildren"?: Mod[] | null;
+    "bundleNexusId"?: number;
+    "enabledPartial"?: boolean;
+    "enabledCount"?: number;
+    "enabledTotal"?: number;
     "savedDownloadPath"?: string;
     "customName"?: string;
     "containsOverwrites": boolean;
@@ -171,15 +174,6 @@ export interface ModDependency {
      * nil = required (SMAPI default)
      */
     "IsRequired": flexBool | null;
-}
-
-/**
- * ModGroup is a collection of mods for UI grouping.
- */
-export interface ModGroup {
-    "key": string;
-    "label": string;
-    "mods": Mod[] | null;
 }
 
 /**

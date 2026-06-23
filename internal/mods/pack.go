@@ -3,57 +3,61 @@ package mods
 import (
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
 // PackUniqueIDPrefix marks synthetic pack mod IDs derived from Nexus update keys.
 const PackUniqueIDPrefix = "pack:nexus:"
 
-// CollapseSiblingPacks merges sibling content-pack mods under a container folder into one pack mod.
+// CollapseSiblingPacks merges mods that share a Nexus mod ID into one bundle row.
 func CollapseSiblingPacks(mods []Mod, modsRoot string, enabled map[string]bool) []Mod {
+	_ = modsRoot
+	return CollapseNexusBundles(mods, enabled)
+}
+
+// CollapseNexusBundles merges two or more mods with the same Nexus update key into one bundle.
+func CollapseNexusBundles(mods []Mod, enabled map[string]bool) []Mod {
 	if len(mods) == 0 {
 		return mods
 	}
 
-	byContainer := map[string][]Mod{}
-	var order []string
+	byNexus := map[int][]Mod{}
 	for _, m := range mods {
-		container := containerPath(m.FolderPath)
-		if container == "" {
+		if m.IsCoreMod {
 			continue
 		}
-		if _, ok := byContainer[container]; !ok {
-			order = append(order, container)
+		nexusID := nexusIDFromUpdateKeys(m.Manifest.UpdateKeys)
+		if nexusID == 0 {
+			continue
 		}
-		byContainer[container] = append(byContainer[container], m)
+		byNexus[nexusID] = append(byNexus[nexusID], m)
 	}
 
-	collapsedContainers := map[string]bool{}
-	for _, container := range order {
-		group := byContainer[container]
-		if len(group) < 2 {
-			continue
+	collapseNexus := map[int]bool{}
+	for nexusID, group := range byNexus {
+		if len(group) >= 2 {
+			collapseNexus[nexusID] = true
 		}
-		if !isSiblingContentPackGroup(modsRoot, container, group) {
-			continue
-		}
-		collapsedContainers[container] = true
 	}
-
-	if len(collapsedContainers) == 0 {
+	if len(collapseNexus) == 0 {
 		return mods
 	}
 
 	out := make([]Mod, 0, len(mods))
-	seen := map[string]bool{}
+	emitted := map[int]bool{}
 	for _, m := range mods {
-		container := containerPath(m.FolderPath)
-		if collapsedContainers[container] {
-			if seen[container] {
+		nexusID := nexusIDFromUpdateKeys(m.Manifest.UpdateKeys)
+		if nexusID != 0 && collapseNexus[nexusID] {
+			if emitted[nexusID] {
 				continue
 			}
-			seen[container] = true
-			out = append(out, buildPackMod(container, byContainer[container], modsRoot, enabled))
+			emitted[nexusID] = true
+			group := byNexus[nexusID]
+			sort.Slice(group, func(i, j int) bool {
+				return group[i].FolderPath < group[j].FolderPath
+			})
+			out = append(out, buildNexusBundle(nexusID, group, enabled))
 			continue
 		}
 		out = append(out, m)
@@ -61,47 +65,28 @@ func CollapseSiblingPacks(mods []Mod, modsRoot string, enabled map[string]bool) 
 	return out
 }
 
-func containerPath(folderPath string) string {
-	parts := strings.Split(filepath.ToSlash(folderPath), "/")
-	if len(parts) < 2 {
-		return ""
-	}
-	return strings.Join(parts[:len(parts)-1], "/")
+func PackUniqueID(nexusID int) string {
+	return fmt.Sprintf("%s%d", PackUniqueIDPrefix, nexusID)
 }
 
-func isSiblingContentPackGroup(modsRoot, container string, group []Mod) bool {
-	containerAbs := filepath.Join(modsRoot, filepath.FromSlash(container))
-	if HasManifestInDir(containerAbs) {
-		return false
-	}
+func buildNexusBundle(nexusID int, children []Mod, enabled map[string]bool) Mod {
+	packUID := PackUniqueID(nexusID)
+	folderPath := bundleFolderPath(children)
+	packID := ModID(folderPath, packUID)
 
-	nexusID := 0
-	for _, m := range group {
-		if m.Manifest.ContentPackFor == nil {
-			return false
-		}
-		id := nexusIDFromUpdateKeys(m.Manifest.UpdateKeys)
-		if id == 0 {
-			return false
-		}
-		if nexusID == 0 {
-			nexusID = id
-		} else if nexusID != id {
-			return false
-		}
-	}
-	return true
-}
-
-func buildPackMod(container string, children []Mod, modsRoot string, enabled map[string]bool) Mod {
-	first := children[0]
 	childIDs := make([]string, len(children))
+	siblingUIDs := make([]string, 0, len(children))
 	var maxInstall, maxUpdated int64
 	hasConfig := false
 	hasJsonFiles := false
 	jsonFileCount := 0
+	containsOverwrites := false
+
 	for i, c := range children {
 		childIDs[i] = c.ID
+		if uid := c.Manifest.UniqueID; uid != "" {
+			siblingUIDs = append(siblingUIDs, uid)
+		}
 		if c.InstallTime > maxInstall {
 			maxInstall = c.InstallTime
 		}
@@ -115,49 +100,258 @@ func buildPackMod(container string, children []Mod, modsRoot string, enabled map
 			hasJsonFiles = true
 		}
 		jsonFileCount += c.JsonFileCount
-	}
-
-	packUID := PackUniqueIDFromManifest(first.Manifest)
-	name := PackDisplayName(filepath.Base(container))
-	abs := filepath.Join(modsRoot, filepath.FromSlash(container))
-	packID := ModID(container, packUID)
-
-	siblingUIDs := make([]string, 0, len(children))
-	for _, c := range children {
-		if uid := c.Manifest.UniqueID; uid != "" {
-			siblingUIDs = append(siblingUIDs, uid)
+		if c.ContainsOverwrites {
+			containsOverwrites = true
 		}
 	}
 
-	manifest := first.Manifest
-	manifest.Name = name
+	primary := pickBundlePrimaryChild(children)
+	manifest := primary.Manifest
+	manifest.Name = bundleDisplayName(children)
 	manifest.UniqueID = packUID
 	manifest.EntryDll = ""
-	manifest.UpdateKeys = first.Manifest.UpdateKeys
+	if len(manifest.UpdateKeys) == 0 {
+		manifest.UpdateKeys = []string{fmt.Sprintf("Nexus:%d", nexusID)}
+	}
 
-	groupKey, groupLabel := groupForMod(container, manifest, GroupingFolderCondensed)
+	bundleChildren := append([]Mod{}, children...)
+	clearBundleChildUpdateStatus(bundleChildren)
+	enabledState := resolveBundleEnabled(childIDs, enabled)
 
 	return Mod{
-		ID:              packID,
-		FolderPath:      container,
-		AbsolutePath:    abs,
-		Manifest:        manifest,
-		Enabled:         resolvePackEnabled(packID, childIDs, enabled),
-		GroupKey:        groupKey,
-		GroupLabel:      groupLabel,
-		HasConfig:       hasConfig,
-		HasJsonFiles:    hasJsonFiles,
-		JsonFileCount:   jsonFileCount,
-		InstallTime:     maxInstall,
-		LastUpdated:     maxUpdated,
-		PackSiblingUIDs: siblingUIDs,
+		ID:                     packID,
+		FolderPath:             folderPath,
+		AbsolutePath:           primary.AbsolutePath,
+		Manifest:               manifest,
+		Enabled:                enabledState.enabledCount > 0,
+		EnabledPartial:         enabledState.partial,
+		EnabledCount:           enabledState.enabledCount,
+		EnabledTotal:           len(children),
+		CategoryIDs:            append([]string{}, primary.CategoryIDs...),
+		UpdateStatus:           mergeBundleUpdateStatus(children),
+		HasConfig:              hasConfig,
+		HasJsonFiles:           hasJsonFiles,
+		JsonFileCount:          jsonFileCount,
+		InstallTime:            maxInstall,
+		LastUpdated:            maxUpdated,
+		PackSiblingUIDs:        siblingUIDs,
+		BundleChildren:         bundleChildren,
+		BundleNexusID:          nexusID,
+		ContainsOverwrites:     containsOverwrites,
+		DependencyIssues:       mergeBundleDependencyIssues(children),
+		MissingDependencyCount: sumMissingDependencyCount(children),
+		CustomName:             primary.CustomName,
 	}
+}
+
+type bundleEnabledState struct {
+	all          bool
+	partial      bool
+	enabledCount int
+}
+
+func resolveBundleEnabled(childIDs []string, enabled map[string]bool) bundleEnabledState {
+	if len(childIDs) == 0 {
+		return bundleEnabledState{all: true}
+	}
+	enabledCount := 0
+	explicit := 0
+	for _, id := range childIDs {
+		if v, ok := enabled[id]; ok {
+			explicit++
+			if v {
+				enabledCount++
+			}
+		} else {
+			enabledCount++
+		}
+	}
+	if explicit == 0 {
+		return bundleEnabledState{all: true, enabledCount: len(childIDs)}
+	}
+	all := enabledCount == len(childIDs)
+	none := enabledCount == 0
+	return bundleEnabledState{
+		all:          all,
+		partial:      !all && !none,
+		enabledCount: enabledCount,
+	}
+}
+
+func bundleFolderPath(children []Mod) string {
+	if len(children) == 0 {
+		return ""
+	}
+	paths := make([]string, len(children))
+	for i, c := range children {
+		paths[i] = c.FolderPath
+	}
+	prefix := commonFolderPrefix(paths)
+	if prefix != "" {
+		return prefix
+	}
+	if len(children) == 1 {
+		return children[0].FolderPath
+	}
+	return ""
+}
+
+func commonFolderPrefix(paths []string) string {
+	if len(paths) == 0 {
+		return ""
+	}
+	split := func(p string) []string {
+		if p == "" {
+			return nil
+		}
+		return strings.Split(filepath.ToSlash(p), "/")
+	}
+	parts := split(paths[0])
+	for _, path := range paths[1:] {
+		other := split(path)
+		i := 0
+		for i < len(parts) && i < len(other) && parts[i] == other[i] {
+			i++
+		}
+		parts = parts[:i]
+		if len(parts) == 0 {
+			return ""
+		}
+	}
+	return strings.Join(parts, "/")
+}
+
+func pickBundlePrimaryChild(children []Mod) Mod {
+	for _, c := range children {
+		if strings.TrimSpace(c.CustomName) != "" {
+			return c
+		}
+	}
+	for _, c := range children {
+		if c.Manifest.EntryDll != "" {
+			return c
+		}
+	}
+	return children[0]
+}
+
+func bundleDisplayName(children []Mod) string {
+	if prefix := bundleFolderPath(children); prefix != "" {
+		if name := PackDisplayName(filepath.Base(prefix)); name != "" {
+			return name
+		}
+	}
+	counts := map[string]int{}
+	var best string
+	bestScore := -1
+	for _, c := range children {
+		name := strings.TrimSpace(c.CustomName)
+		if name == "" {
+			name = stripModNamePrefix(c.Manifest.Name)
+		}
+		if name == "" {
+			name = PackDisplayName(filepath.Base(c.FolderPath))
+		}
+		counts[name]++
+		score := counts[name]
+		if score > bestScore || (score == bestScore && len(name) > len(best)) {
+			best = name
+			bestScore = score
+		}
+	}
+	if best != "" {
+		return best
+	}
+	return "Mod bundle"
+}
+
+func stripModNamePrefix(name string) string {
+	name = strings.TrimSpace(name)
+	for {
+		changed := false
+		for _, prefix := range []string{"[CP] ", "[AT] ", "(CP) ", "(AT) ", "[CP]", "[AT]"} {
+			if strings.HasPrefix(name, prefix) {
+				name = strings.TrimSpace(strings.TrimPrefix(name, prefix))
+				changed = true
+			}
+		}
+		if !changed {
+			break
+		}
+	}
+	return name
+}
+
+// StripBundleChildUpdateStatus clears update status on bundle parts so only the
+// synthetic parent row owns Nexus update state.
+func StripBundleChildUpdateStatus(list []Mod) {
+	for i := range list {
+		if len(list[i].BundleChildren) == 0 {
+			continue
+		}
+		clearBundleChildUpdateStatus(list[i].BundleChildren)
+	}
+}
+
+func clearBundleChildUpdateStatus(children []Mod) {
+	for i := range children {
+		children[i].UpdateStatus = UpdateStatus{}
+	}
+}
+
+func mergeBundleUpdateStatus(children []Mod) UpdateStatus {
+	priority := map[string]int{
+		"incompatible":      0,
+		"update":            1,
+		"update_available":  1,
+		"update_ignored":    2,
+		"unofficial":        3,
+		"current":           4,
+	}
+	best := UpdateStatus{State: "current"}
+	bestPri := 99
+	for _, c := range children {
+		state := c.UpdateStatus.State
+		if state == "" {
+			state = "current"
+		}
+		pri := priority[state]
+		if pri < bestPri {
+			bestPri = pri
+			best = c.UpdateStatus
+		}
+	}
+	return best
+}
+
+func mergeBundleDependencyIssues(children []Mod) []DependencyIssue {
+	var out []DependencyIssue
+	seen := map[string]bool{}
+	for _, c := range children {
+		for _, issue := range c.DependencyIssues {
+			key := issue.UniqueID + "|" + issue.State
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			out = append(out, issue)
+		}
+	}
+	return out
+}
+
+func sumMissingDependencyCount(children []Mod) int {
+	total := 0
+	for _, c := range children {
+		total += c.MissingDependencyCount
+	}
+	return total
 }
 
 // PackUniqueIDFromManifest returns a stable synthetic UniqueID for a mod pack.
 func PackUniqueIDFromManifest(m Manifest) string {
 	if id := nexusIDFromUpdateKeys(m.UpdateKeys); id != 0 {
-		return fmt.Sprintf("%s%d", PackUniqueIDPrefix, id)
+		return PackUniqueID(id)
 	}
 	return "pack:" + m.UniqueID
 }
@@ -184,47 +378,81 @@ func nexusIDFromUpdateKeys(keys []string) int {
 	return 0
 }
 
-func resolvePackEnabled(packID string, childIDs []string, enabled map[string]bool) bool {
-	if enabled != nil {
-		if v, ok := enabled[packID]; ok {
-			return v
-		}
-		anySet := false
-		anyEnabled := false
-		for _, cid := range childIDs {
-			if v, ok := enabled[cid]; ok {
-				anySet = true
-				if v {
-					anyEnabled = true
-				}
-			}
-		}
-		if anySet {
-			return anyEnabled
-		}
-	}
-	return true
-}
-
-// IsPackModID reports whether modID refers to a collapsed content-pack mod.
+// IsPackModID reports whether modID refers to a collapsed bundle mod.
 func IsPackModID(modID string) bool {
 	return strings.Contains(modID, PackUniqueIDPrefix)
 }
 
-// MigratePackEnableState removes stale child mod IDs when toggling a pack mod.
+// IsBundleMod reports whether m is a synthetic Nexus bundle parent row.
+func IsBundleMod(m Mod) bool {
+	return len(m.BundleChildren) > 0
+}
+
+// BundleChildIDs returns mod IDs for bundle children when m is a bundle.
+func BundleChildIDs(m Mod) []string {
+	if len(m.BundleChildren) == 0 {
+		return nil
+	}
+	ids := make([]string, len(m.BundleChildren))
+	for i, child := range m.BundleChildren {
+		ids[i] = child.ID
+	}
+	return ids
+}
+
+// MigratePackEnableState normalizes profile enable state when toggling a bundle.
 func MigratePackEnableState(enabled map[string]bool, packModID string, enabledValue bool) {
 	if enabled == nil {
 		return
 	}
+	delete(enabled, packModID)
 	folderPath, _, ok := strings.Cut(packModID, "::")
-	if !ok || !strings.Contains(packModID, PackUniqueIDPrefix) {
-		return
-	}
-	prefix := folderPath + "/"
-	for id := range enabled {
-		if strings.HasPrefix(id, prefix) {
-			delete(enabled, id)
+	if ok && folderPath != "" {
+		prefix := folderPath + "/"
+		for id := range enabled {
+			if strings.HasPrefix(id, prefix) {
+				delete(enabled, id)
+			}
 		}
 	}
-	enabled[packModID] = enabledValue
+}
+
+// SetBundleChildrenEnabled writes per-part enable state for a bundle.
+func SetBundleChildrenEnabled(enabled map[string]bool, childIDs []string, enabledValue bool) {
+	if enabled == nil {
+		return
+	}
+	for _, id := range childIDs {
+		enabled[id] = enabledValue
+	}
+}
+
+// ExpandModsForAssembly returns physical mods to link for profile assembly.
+func ExpandModsForAssembly(modList []Mod) []Mod {
+	out := make([]Mod, 0, len(modList))
+	for _, m := range modList {
+		if len(m.BundleChildren) > 0 {
+			out = append(out, m.BundleChildren...)
+			continue
+		}
+		out = append(out, m)
+	}
+	return out
+}
+
+// BundleDeleteFolderPaths returns folder paths that should be removed for a mod row.
+func BundleDeleteFolderPaths(m Mod) []string {
+	if len(m.BundleChildren) == 0 {
+		if m.FolderPath == "" {
+			return nil
+		}
+		return []string{m.FolderPath}
+	}
+	paths := make([]string, 0, len(m.BundleChildren))
+	for _, child := range m.BundleChildren {
+		if child.FolderPath != "" {
+			paths = append(paths, child.FolderPath)
+		}
+	}
+	return paths
 }

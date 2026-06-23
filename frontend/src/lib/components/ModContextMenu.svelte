@@ -18,11 +18,20 @@
     mod: Mod | null;
     x: number;
     y: number;
+    /** Hide Nexus update actions on bundle part rows (parent owns updates). */
+    suppressUpdateActions?: boolean;
     onaction: (action: string) => void;
     onclose: () => void;
   }
 
-  let { mod, x, y, onaction, onclose }: Props = $props();
+  let {
+    mod,
+    x,
+    y,
+    suppressUpdateActions = false,
+    onaction,
+    onclose,
+  }: Props = $props();
 
   let menuEl = $state<HTMLDivElement | undefined>();
 
@@ -32,10 +41,14 @@
       false,
   );
   const hasUpdate = $derived(
-    mod?.updateStatus?.state === "update" ||
-      mod?.updateStatus?.state === "update_available",
+    !suppressUpdateActions &&
+      (mod?.updateStatus?.state === "update" ||
+        mod?.updateStatus?.state === "update_available"),
   );
-  const updateIgnored = $derived(mod?.updateStatus?.state === "update_ignored");
+  const updateIgnored = $derived(
+    !suppressUpdateActions &&
+      mod?.updateStatus?.state === "update_ignored",
+  );
 
   const menuPos = $derived({
     left: Math.min(x, Math.max(0, window.innerWidth - 220)),

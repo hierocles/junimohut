@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick } from "svelte";
-  import { ChevronDown, ChevronUp } from "@lucide/svelte";
+  import { ChevronDown, ChevronRight, ChevronUp } from "@lucide/svelte";
   import { createAnnouncer } from "@sv-kit/a11y-keys";
   import type { Category, Mod } from "$lib/api/client";
   import { modStatusInfo, modStatusSortKey } from "$lib/mods/modStatus";
@@ -42,7 +42,24 @@
     gridSelectionClearedAnnounce,
     gridBulkDeleteOpeningAnnounce,
     learnHintDismissLabel,
+    gridBundlePartsLabel,
+    gridBundleExpandLabel,
+    gridBundleCollapseLabel,
   } from "$lib/copy";
+  import {
+    buildGridDisplayRows,
+    bundleFolderLabel,
+    bundleIsChecked,
+    bundleIsFullyDisabled,
+    bundleIsIndeterminate,
+    bundlePartCount,
+    bundlePartTypeLabel,
+    bundleVersionLabel,
+    isBundleMod,
+    loadExpandedBundleIds,
+    saveExpandedBundleIds,
+    type GridDisplayRow,
+  } from "$lib/mods/bundles";
   import emptyStateIllustration from "$lib/assets/brand/empty-state-illustration.svg?raw";
   import { displayModName } from "$lib/mods/names";
   import { layoutTagChips } from "$lib/mods/tagChipLayout";
@@ -273,6 +290,7 @@
   let sortColumn = $state<SortColumn | null>(initialSort.column);
   let sortDirection = $state<SortDirection | null>(initialSort.direction);
   let headerMenu = $state<{ x: number; y: number } | null>(null);
+  let expandedBundleIds = $state(loadExpandedBundleIds());
 
   const activeVisibleColumns = $derived(
     normalizeVisibleColumns(visibleColumns),
@@ -325,8 +343,8 @@
         );
         break;
       case "version":
-        cmp = (a.manifest?.Version ?? "").localeCompare(
-          b.manifest?.Version ?? "",
+        cmp = bundleVersionLabel(a).localeCompare(
+          bundleVersionLabel(b),
           undefined,
           {
             numeric: true,
@@ -335,9 +353,13 @@
         );
         break;
       case "folder":
-        cmp = a.folderPath.localeCompare(b.folderPath, undefined, {
-          sensitivity: "base",
-        });
+        cmp = bundleFolderLabel(a).localeCompare(
+          bundleFolderLabel(b),
+          undefined,
+          {
+            sensitivity: "base",
+          },
+        );
         break;
       case "installed": {
         const aT = a.installTime;
@@ -463,27 +485,30 @@
   const filteredMods = $derived(
     applyModFilters(mods, categories, gridStatusFilter),
   );
-  const displayMods = $derived(
+  const sortedMods = $derived(
     sortModList(filteredMods, sortColumn, sortDirection),
   );
+  const displayRows = $derived(
+    buildGridDisplayRows(sortedMods, expandedBundleIds, searchQuery),
+  );
 
-  const visibleModIds = $derived(displayMods.map((m) => m.id));
+  const visibleModIds = $derived(displayRows.map((row) => row.mod.id));
 
   const activeBulkSelection = $derived(
     new Set(visibleModIds.filter((id) => bulkSelected.has(id))),
   );
 
   const deletableBulkMods = $derived(
-    displayMods.filter(
+    sortedMods.filter(
       (mod) => activeBulkSelection.has(mod.id) && !mod.isCoreMod,
     ),
   );
 
-  const isEmptyGrid = $derived(displayMods.length === 0);
+  const isEmptyGrid = $derived(sortedMods.length === 0);
 
-  const showBulkHint = $derived(!bulkHintDismissed && displayMods.length > 0);
+  const showBulkHint = $derived(!bulkHintDismissed && sortedMods.length > 0);
   const showWorkspaceHint = $derived(!workspaceHintDismissed);
-  const showTagsHint = $derived(!tagsHintDismissed && displayMods.length > 0);
+  const showTagsHint = $derived(!tagsHintDismissed && sortedMods.length > 0);
   const activeLearnHint = $derived.by(
     (): "workspace" | "tags" | "bulk" | null => {
       if (activeBulkSelection.size > 0) return null;
@@ -525,7 +550,7 @@
   $effect(() => {
     if (!tagPicker) return;
     const id = tagPicker.mod.id;
-    const fresh = displayMods.find((m) => m.id === id);
+    const fresh = displayRows.find((row) => row.mod.id === id)?.mod;
     if (fresh && fresh !== tagPicker.mod) {
       tagPicker = { ...tagPicker, mod: fresh };
     }
@@ -558,13 +583,20 @@
     }
   }
 
-  function statusInfo(mod: Mod): {
+  function statusInfo(mod: Mod, row: GridDisplayRow): {
     text: string;
     badge: string | null;
     title?: string;
   } {
-    const info = modStatusInfo(mod, lastUpdateCheck);
+    const info = modStatusInfo(
+      row.kind === "child" ? stripUpdateStatus(mod) : mod,
+      lastUpdateCheck,
+    );
     return { text: info.text, badge: info.badge, title: info.title };
+  }
+
+  function stripUpdateStatus(mod: Mod): Mod {
+    return { ...mod, updateStatus: {} };
   }
 
   function versionDisplay(mod: Mod): { text: string; class: string } {
@@ -623,7 +655,52 @@
     );
   }
 
-  function onRowClick(mod: Mod, e: MouseEvent) {
+  function indeterminateCheckbox(
+    node: HTMLInputElement,
+    indeterminate: boolean,
+  ) {
+    node.indeterminate = indeterminate;
+    return {
+      update(value: boolean) {
+        node.indeterminate = value;
+      },
+    };
+  }
+
+  function toggleBundleExpanded(mod: Mod, e?: MouseEvent) {
+    e?.stopPropagation();
+    e?.preventDefault();
+    const next = new Set(expandedBundleIds);
+    if (next.has(mod.id)) next.delete(mod.id);
+    else next.add(mod.id);
+    expandedBundleIds = next;
+    saveExpandedBundleIds(next);
+    sr.announce(
+      next.has(mod.id) ? gridBundleExpandLabel : gridBundleCollapseLabel,
+    );
+  }
+
+  function rowCheckboxChecked(mod: Mod, row: GridDisplayRow): boolean {
+    if (row.kind === "child") return mod.enabled;
+    if (isBundleMod(mod)) return bundleIsChecked(mod);
+    return mod.enabled;
+  }
+
+  function rowCheckboxIndeterminate(mod: Mod, row: GridDisplayRow): boolean {
+    return (
+      row.kind === "parent" && isBundleMod(mod) && bundleIsIndeterminate(mod)
+    );
+  }
+
+  function rowIsDisabled(mod: Mod, row: GridDisplayRow): boolean {
+    if (mod.isCoreMod) return false;
+    if (row.kind === "child") return !mod.enabled;
+    if (isBundleMod(mod)) return bundleIsFullyDisabled(mod);
+    return !mod.enabled;
+  }
+
+  function onRowClick(row: GridDisplayRow, e: MouseEvent) {
+    const mod = row.mod;
     const id = mod.id;
     focusedModId = id;
 
@@ -695,7 +772,11 @@
 
   async function focusModRow(id: string) {
     focusedModId = id;
-    if (displayMods.findIndex((m) => m.id === id) === -1) return;
+    if (
+      sortedMods.findIndex((m) => m.id === id) === -1 &&
+      displayRows.findIndex((row) => row.mod.id === id) === -1
+    )
+      return;
     await tick();
     scrollEl?.querySelector<HTMLElement>(`tr[data-mod-id="${id}"]`)?.focus();
   }
@@ -726,9 +807,22 @@
     await focusModRow(nextId);
   }
 
-  function onRowKeydown(mod: Mod, e: KeyboardEvent) {
+  function onRowKeydown(row: GridDisplayRow, e: KeyboardEvent) {
+    const mod = row.mod;
     const target = e.target as HTMLElement;
     if (target.closest("button, input, .resize-handle")) return;
+
+    if (
+      row.kind === "parent" &&
+      isBundleMod(mod) &&
+      (e.key === "ArrowRight" || e.key === "ArrowLeft")
+    ) {
+      e.preventDefault();
+      const expanded = expandedBundleIds.has(mod.id);
+      if (e.key === "ArrowRight" && !expanded) toggleBundleExpanded(mod);
+      if (e.key === "ArrowLeft" && expanded) toggleBundleExpanded(mod);
+      return;
+    }
 
     if (e.key === "Enter") {
       if (e.target !== e.currentTarget) return;
@@ -744,7 +838,7 @@
       if (e.target !== e.currentTarget) return;
       e.preventDefault();
       if (mod.isCoreMod) return;
-      const nextEnabled = !mod.enabled;
+      const nextEnabled = !rowCheckboxChecked(mod, row);
       ontoggle(mod.id, nextEnabled);
       sr.announce(`${modName(mod)} ${nextEnabled ? "enabled" : "disabled"}`);
     }
@@ -919,7 +1013,7 @@
   {#if gridStatusFilter === "updates"}
     <div class="mod-grid-chrome-bar mod-grid-chrome-bar--status" role="status">
       <span class="state-badge state-badge--update">
-        {gridUpdatesFilterLabel(displayMods.length)}
+        {gridUpdatesFilterLabel(sortedMods.length)}
       </span>
       <span class="type-meta">{gridUpdatesFilterMeta}</span>
       {#if onClearGridStatusFilter}
@@ -935,7 +1029,7 @@
   {:else if gridStatusFilter === "dependencies"}
     <div class="mod-grid-chrome-bar mod-grid-chrome-bar--status" role="status">
       <span class="state-badge state-badge--error">
-        {gridDependencyFilterLabel(displayMods.length)}
+        {gridDependencyFilterLabel(sortedMods.length)}
       </span>
       <span class="type-meta">{gridDependencyFilterMeta}</span>
       {#if onClearGridStatusFilter}
@@ -1286,8 +1380,8 @@
             </td>
           </tr>
         {:else}
-          {#each displayMods as mod (mod.id)}
-            {@render modRow(mod)}
+          {#each displayRows as row (row.mod.id + ":" + row.kind)}
+            {@render gridRow(row)}
           {/each}
         {/if}
       </tbody>
@@ -1305,28 +1399,45 @@
   />
 {/if}
 
-{#snippet modRow(mod: Mod)}
-  {@const status = statusInfo(mod)}
-  {@const version = versionDisplay(mod)}
+{#snippet gridRow(row: GridDisplayRow)}
+  {@const mod = row.mod}
+  {@const status = statusInfo(mod, row)}
+  {@const versionText =
+    row.kind === "child"
+      ? (mod.manifest?.Version ?? "")
+      : row.kind === "parent" && isBundleMod(mod)
+        ? bundleVersionLabel(mod)
+        : versionDisplay(mod).text}
+  {@const versionClass =
+    row.kind === "child"
+      ? ""
+      : row.kind === "parent" && isBundleMod(mod)
+        ? ""
+        : versionDisplay(mod).class}
   {@const installedDate = formatInstallDate(mod.installTime)}
   {@const modCategories = categoriesForMod(mod)}
   {@const tagLayout = layoutTagChips(modCategories, columnWidths.tags)}
   {@const isDownloading = downloadingIds.has(mod.id)}
   {@const isSelected = selectedModId === mod.id}
   {@const isBulkSelected = activeBulkSelection.has(mod.id)}
+  {@const bundleExpanded = isBundleMod(mod) && expandedBundleIds.has(mod.id)}
+  {@const showBundleParts =
+    row.kind === "parent" && isBundleMod(mod) && !bundleExpanded}
   <tr
     class="mod-row cursor-pointer hover:bg-surface-800/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/60 focus-visible:ring-inset"
     class:selected={isSelected}
     class:bulk-selected={isBulkSelected && activeBulkSelection.size >= 1}
-    class:disabled-row={!mod.enabled && !mod.isCoreMod}
+    class:disabled-row={rowIsDisabled(mod, row)}
+    class:mod-row--bundle-parent={row.kind === "parent" && isBundleMod(mod)}
+    class:mod-row--bundle-child={row.kind === "child"}
     style="height: {ROW_HEIGHT_MOD}px"
     data-mod-id={mod.id}
     tabindex={focusedModId === mod.id || (focusedModId == null && isSelected)
       ? 0
       : -1}
     aria-selected={isSelected || isBulkSelected}
-    onclick={(e) => onRowClick(mod, e)}
-    onkeydown={(e) => onRowKeydown(mod, e)}
+    onclick={(e) => onRowClick(row, e)}
+    onkeydown={(e) => onRowKeydown(row, e)}
     oncontextmenu={(e) => {
       e.preventDefault();
       oncontext(mod, "menu", e);
@@ -1337,7 +1448,8 @@
         <input
           type="checkbox"
           class="checkbox checkbox-sm"
-          checked={mod.enabled}
+          checked={rowCheckboxChecked(mod, row)}
+          use:indeterminateCheckbox={rowCheckboxIndeterminate(mod, row)}
           disabled={mod.isCoreMod}
           aria-label="Enable {modName(mod)}"
           onclick={(e) => e.stopPropagation()}
@@ -1348,57 +1460,96 @@
     {/if}
     {#if colVisible("name")}
       <td class="cell-truncate" role="gridcell">
-        <span class="mod-name min-w-0 truncate text-surface-50"
-          >{modName(mod)}</span
+        <div
+          class="mod-name-cell"
+          class:mod-name-cell--child={row.kind === "child"}
         >
+          {#if row.kind === "parent" && isBundleMod(mod)}
+            <button
+              type="button"
+              class="bundle-toggle"
+              aria-expanded={bundleExpanded}
+              aria-label={bundleExpanded
+                ? gridBundleCollapseLabel
+                : gridBundleExpandLabel}
+              onclick={(e) => toggleBundleExpanded(mod, e)}
+            >
+              {#if bundleExpanded}
+                <ChevronDown size={14} strokeWidth={2.5} aria-hidden="true" />
+              {:else}
+                <ChevronRight size={14} strokeWidth={2.5} aria-hidden="true" />
+              {/if}
+            </button>
+          {:else if row.kind === "child"}
+            <span class="bundle-child-rail" aria-hidden="true"></span>
+          {/if}
+          <span class="mod-name min-w-0 truncate text-surface-50"
+            >{modName(mod)}</span
+          >
+          {#if showBundleParts}
+            <span class="bundle-parts type-caption type-meta"
+              >{gridBundlePartsLabel(bundlePartCount(mod))}</span
+            >
+          {/if}
+          {#if row.kind === "child"}
+            <span class="bundle-part-type type-caption type-meta"
+              >{bundlePartTypeLabel(mod)}</span
+            >
+          {/if}
+        </div>
       </td>
     {/if}
     {#if colVisible("tags")}
       <td
         class="tags-cell"
         class:tags-cell--empty={modCategories.length === 0}
+        class:tags-cell--bundle-child={row.kind === "child"}
         role="gridcell"
       >
-        <button
-          type="button"
-          class="tags-cell-trigger"
-          aria-label={tagsCellEditLabel(
-            modName(mod),
-            modCategories.map((c) => c.name),
-          )}
-          onclick={(e) => openTagPicker(mod, e)}
-        >
-          <div class="tags-cell-inner">
-            {#if modCategories.length === 0}
-              <span class="tags-add-pill type-caption">
-                <span class="tags-add-icon" aria-hidden="true">+</span>
-                {tagsCellAddLabel}
-              </span>
-            {:else}
-              {#each tagLayout.visible as cat (cat.id)}
-                <span
-                  class="tag-chip chip-colored type-caption"
-                  style:--chip-color={cat.color || "var(--color-primary-500)"}
-                  title={cat.name}
-                >
-                  {cat.name}
+        {#if row.kind === "child"}
+          <span class="type-caption type-meta" aria-hidden="true">—</span>
+        {:else}
+          <button
+            type="button"
+            class="tags-cell-trigger"
+            aria-label={tagsCellEditLabel(
+              modName(mod),
+              modCategories.map((c) => c.name),
+            )}
+            onclick={(e) => openTagPicker(mod, e)}
+          >
+            <div class="tags-cell-inner">
+              {#if modCategories.length === 0}
+                <span class="tags-add-pill type-caption">
+                  <span class="tags-add-icon" aria-hidden="true">+</span>
+                  {tagsCellAddLabel}
                 </span>
-              {/each}
-              {#if tagLayout.overflowCount > 0}
-                <span
-                  class="tag-chip tag-chip-overflow type-caption"
-                  title={tagLayout.overflowLabel}
-                  aria-label={tagsOverflowLabel(
-                    tagLayout.overflowCount,
-                    tagLayout.overflowLabel,
-                  )}
-                >
-                  +{tagLayout.overflowCount}
-                </span>
+              {:else}
+                {#each tagLayout.visible as cat (cat.id)}
+                  <span
+                    class="tag-chip chip-colored type-caption"
+                    style:--chip-color={cat.color || "var(--color-primary-500)"}
+                    title={cat.name}
+                  >
+                    {cat.name}
+                  </span>
+                {/each}
+                {#if tagLayout.overflowCount > 0}
+                  <span
+                    class="tag-chip tag-chip-overflow type-caption"
+                    title={tagLayout.overflowLabel}
+                    aria-label={tagsOverflowLabel(
+                      tagLayout.overflowCount,
+                      tagLayout.overflowLabel,
+                    )}
+                  >
+                    +{tagLayout.overflowCount}
+                  </span>
+                {/if}
               {/if}
-            {/if}
-          </div>
-        </button>
+            </div>
+          </button>
+        {/if}
       </td>
     {/if}
     {#if colVisible("author")}
@@ -1407,13 +1558,15 @@
       </td>
     {/if}
     {#if colVisible("version")}
-      <td class="cell-truncate type-data {version.class}" role="gridcell">
-        {version.text || "—"}
+      <td class="cell-truncate type-data {versionClass}" role="gridcell">
+        {versionText || "—"}
       </td>
     {/if}
     {#if colVisible("folder")}
       <td class="cell-truncate type-meta" role="gridcell">
-        {mod.folderPath}
+        {row.kind === "parent" && isBundleMod(mod)
+          ? bundleFolderLabel(mod)
+          : mod.folderPath}
       </td>
     {/if}
     {#if colVisible("installed")}
@@ -1444,7 +1597,7 @@
               {modContainsOverwritesLabel()}
             </span>
           {/if}
-          {#if canDownloadUpdate(mod)}
+          {#if row.kind === "parent" && canDownloadUpdate(mod)}
             <button
               type="button"
               class="btn btn-sm preset-filled-primary-500 download-btn shrink-0 font-medium"
@@ -1742,6 +1895,69 @@
     padding: 0 0.5rem;
     font-size: var(--type-caption);
     line-height: var(--leading-snug);
+  }
+
+  .mod-row--bundle-parent {
+    background-color: color-mix(in oklab, var(--sdvm-raised) 55%, transparent);
+  }
+
+  .mod-row--bundle-child {
+    background-color: color-mix(in oklab, var(--sdvm-panel) 88%, transparent);
+  }
+
+  .mod-name-cell {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  .mod-name-cell--child {
+    padding-left: var(--space-1);
+  }
+
+  .bundle-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 1.25rem;
+    height: 1.25rem;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-base, 0.25rem);
+    background: transparent;
+    color: var(--color-surface-300);
+    cursor: pointer;
+  }
+
+  .bundle-toggle:hover,
+  .bundle-toggle:focus-visible {
+    color: var(--color-surface-50);
+    background-color: color-mix(
+      in oklab,
+      var(--color-primary-500) 10%,
+      transparent
+    );
+  }
+
+  .bundle-child-rail {
+    flex-shrink: 0;
+    width: 1.25rem;
+    height: 1.25rem;
+    border-left: 1px solid var(--sdvm-border);
+    margin-left: 0.35rem;
+  }
+
+  .bundle-parts,
+  .bundle-part-type {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+
+  .tags-cell--bundle-child {
+    opacity: 0.55;
   }
 
   @media (prefers-reduced-motion: reduce) {

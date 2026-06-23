@@ -97,8 +97,6 @@ type Mod struct {
 	Manifest     Manifest     `json:"manifest"`
 	Enabled      bool         `json:"enabled"`
 	CategoryIDs  []string     `json:"categoryIds"`
-	GroupKey     string       `json:"groupKey"`
-	GroupLabel   string       `json:"groupLabel"`
 	UpdateStatus UpdateStatus `json:"updateStatus"`
 	HasConfig     bool         `json:"hasConfig"`
 	HasJsonFiles  bool         `json:"hasJsonFiles"`
@@ -109,16 +107,14 @@ type Mod struct {
 	DependencyIssues       []DependencyIssue `json:"dependencyIssues"`
 	MissingDependencyCount int               `json:"missingDependencyCount"`
 	PackSiblingUIDs        []string          `json:"packSiblingUIDs,omitempty"`
+	BundleChildren         []Mod             `json:"bundleChildren,omitempty"`
+	BundleNexusID          int               `json:"bundleNexusId,omitempty"`
+	EnabledPartial         bool              `json:"enabledPartial,omitempty"`
+	EnabledCount           int               `json:"enabledCount,omitempty"`
+	EnabledTotal           int               `json:"enabledTotal,omitempty"`
 	SavedDownloadPath      string            `json:"savedDownloadPath,omitempty"`
 	CustomName             string            `json:"customName,omitempty"`
 	ContainsOverwrites     bool              `json:"containsOverwrites"`
-}
-
-// ModGroup is a collection of mods for UI grouping.
-type ModGroup struct {
-	Key   string `json:"key"`
-	Label string `json:"label"`
-	Mods  []Mod  `json:"mods"`
 }
 
 // DeleteModsResult summarizes bulk mod deletion.

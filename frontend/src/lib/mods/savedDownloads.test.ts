@@ -22,8 +22,6 @@ describe("resolveArchiveMod", () => {
     },
     enabled: true,
     categoryIds: [],
-    groupKey: "",
-    groupLabel: "",
     updateStatus: {
       state: "current",
       latestVersion: "",

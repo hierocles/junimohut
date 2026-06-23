@@ -45,7 +45,6 @@ func TestScannerFindsSiblingContentPacks(t *testing.T) {
 
 	list, err := NewScanner().Scan(ScanOptions{
 		ModsRoot:  root,
-		Grouping:  GroupingFolderCondensed,
 	})
 	must.NoError(err)
 	must.Len(list, 1)

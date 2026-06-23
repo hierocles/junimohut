@@ -3,6 +3,7 @@ package mods
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -145,7 +146,31 @@ func TestInstallRealStringLightsZip(t *testing.T) {
 	scanner := NewScanner()
 	mods, err := scanner.Scan(ScanOptions{ModsRoot: root})
 	must.NoError(err)
-	must.Len(mods, 2)
+	must.Len(mods, 1)
+	must.Len(mods[0].BundleChildren, 2)
+}
+
+func TestBundleChildrenClearUpdateStatus(t *testing.T) {
+	t.Parallel()
+	must := require.New(t)
+
+	children := []Mod{
+		{
+			Manifest:     Manifest{UpdateKeys: []string{"Nexus:1"}, Version: "1.0"},
+			UpdateStatus: UpdateStatus{State: "update_available", LatestVersion: "2.0"},
+		},
+		{
+			Manifest:     Manifest{UpdateKeys: []string{"Nexus:1"}, Version: "1.1"},
+			UpdateStatus: UpdateStatus{State: "current"},
+		},
+	}
+	bundle := buildNexusBundle(1, children, nil)
+	must.Equal("update_available", bundle.UpdateStatus.State)
+	must.Equal("2.0", bundle.UpdateStatus.LatestVersion)
+	for _, child := range bundle.BundleChildren {
+		must.Empty(child.UpdateStatus.State)
+		must.Empty(child.UpdateStatus.LatestVersion)
+	}
 }
 
 func sveCodeManifest() string {
@@ -217,7 +242,8 @@ func TestInstallArchiveExpansionBundle(t *testing.T) {
 	installer := NewInstaller(root)
 	results, err := installer.InstallArchive(archivePath)
 	must.NoError(err)
-	must.Len(results, 3)
+	must.Len(results, 1)
+	must.Equal(PackUniqueIDPrefix+"3753", strings.Split(results[0].ModID, "::")[1])
 
 	dest := filepath.Join(root, "Stardew Valley Expanded")
 	for _, sub := range []string{"Stardew Valley Expanded Code", "[CP] Stardew Valley Expanded", "[FTM] Stardew Valley Expanded"} {
@@ -228,7 +254,8 @@ func TestInstallArchiveExpansionBundle(t *testing.T) {
 	scanner := NewScanner()
 	mods, err := scanner.Scan(ScanOptions{ModsRoot: root})
 	must.NoError(err)
-	must.Len(mods, 3)
+	must.Len(mods, 1)
+	must.Len(mods[0].BundleChildren, 3)
 }
 
 func TestInstallRealSVEZip(t *testing.T) {
@@ -361,8 +388,6 @@ func TestPackEnableMigration(t *testing.T) {
 		"(AT) Chest Deco/animal products::guxelchestdeco.animal": true,
 		"(AT) Chest Deco/fishes::guxelchestdeco.fishes":          false,
 	}
-	packID := ModID("(AT) Chest Deco", PackUniqueIDPrefix+"20384")
-
 	mods := CollapseSiblingPacks([]Mod{
 		{ID: "(AT) Chest Deco/animal products::guxelchestdeco.animal", FolderPath: "(AT) Chest Deco/animal products", Manifest: Manifest{UniqueID: "guxelchestdeco.animal", ContentPackFor: &ContentPackFor{UniqueID: "PeacefulEnd.AlternativeTextures"}, UpdateKeys: []string{"Nexus:20384"}}},
 		{ID: "(AT) Chest Deco/fishes::guxelchestdeco.fishes", FolderPath: "(AT) Chest Deco/fishes", Manifest: Manifest{UniqueID: "guxelchestdeco.fishes", ContentPackFor: &ContentPackFor{UniqueID: "PeacefulEnd.AlternativeTextures"}, UpdateKeys: []string{"Nexus:20384"}}},
@@ -371,9 +396,11 @@ func TestPackEnableMigration(t *testing.T) {
 	must.Len(mods, 1)
 	must.True(mods[0].Enabled)
 
-	MigratePackEnableState(enabled, packID, false)
-	must.False(enabled[packID])
-	must.NotContains(enabled, "(AT) Chest Deco/animal products::guxelchestdeco.animal")
+	SetBundleChildrenEnabled(enabled, []string{
+		"(AT) Chest Deco/animal products::guxelchestdeco.animal",
+		"(AT) Chest Deco/fishes::guxelchestdeco.fishes",
+	}, false)
+	must.False(enabled["(AT) Chest Deco/animal products::guxelchestdeco.animal"])
 }
 
 func TestResolveInstallUnitsSingleWrapper(t *testing.T) {

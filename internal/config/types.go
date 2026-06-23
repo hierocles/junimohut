@@ -13,7 +13,6 @@ type Settings struct {
 	ShowThumbnails          bool     `json:"showThumbnails"`
 	AutoSaveProfileChanges  bool     `json:"autoSaveProfileChanges"`
 	AlwaysAskDeleteOnUpdate bool     `json:"alwaysAskDeleteOnUpdate"`
-	ModGrouping             string   `json:"modGrouping"` // folder, contentpack, folder_condensed
 	HideDisabledFilter      string   `json:"hideDisabledFilter"`
 	VisibleColumns          []string `json:"visibleColumns"`
 	WindowWidth             int      `json:"windowWidth"`
@@ -33,7 +32,6 @@ func DefaultSettings() Settings {
 		Theme:                  "stardew-dark",
 		Language:               "en",
 		AutoSaveProfileChanges: true,
-		ModGrouping:            "folder",
 		HideDisabledFilter:     "none",
 		VisibleColumns:         []string{"enabled", "name", "tags", "author", "version", "folder", "installed", "status"},
 		WindowWidth:            1430,

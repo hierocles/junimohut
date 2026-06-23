@@ -33,7 +33,6 @@ func TestVerifyAssemblyIntegration(t *testing.T) {
 	list, err := mods.NewScanner().Scan(mods.ScanOptions{
 		ModsRoot:            settings.ModsRoot,
 		IgnoreHiddenFolders: settings.IgnoreHiddenFolders,
-		Grouping:            settings.ModGrouping,
 	})
 	must.NoError(err)
 	list = mods.DedupeByUniqueID(mods.DedupeByID(list))

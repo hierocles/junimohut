@@ -11,7 +11,7 @@ Cross-platform mod manager for [Stardew Valley](https://www.stardewvalley.net/),
 - Integrated config/json editor
 - SMAPI launch, version display, update detection
 - Mod update checking (SMAPI API, 1/hour rate limit)
-- Mod grouping (folder, condensed folder, content pack)
+- **Nexus mod bundles** — multi-part mods (CP + C# DLL, etc.) collapse into one expandable row when they share a Nexus ID
 - **User-defined categories** with show/hide visibility filters
 - Nexus Mods API (endorse, downloads, premium update install)
 - i18n-ready translation API
