@@ -58,6 +58,8 @@
     updatedModMessage,
     tagsAppliedMessage,
     modEndorsedOnNexus,
+    modUpdateIgnoredMessage,
+    modUpdateResumedMessage,
     noNexusUpdateKey,
     downloadingUpdateForMessage,
     updateDownloadedForMessage,
@@ -142,7 +144,9 @@
   let selectedModId = $state<string | null>(null);
   let settingsOpen = $state(false);
   let downloadsOpen = $state(false);
-  let downloads = $state<NonNullable<Awaited<ReturnType<typeof API.ListDownloads>>>>([]);
+  let downloads = $state<
+    NonNullable<Awaited<ReturnType<typeof API.ListDownloads>>>
+  >([]);
   let savedDownloads = $state<SavedDownloadRecord[]>([]);
   let downloadsPaneWidth = $state(loadDownloadsPaneWidth());
   let nexusConnected = $state(false);
@@ -969,6 +973,7 @@
     try {
       const before = readyCount;
       await API.CheckModUpdates();
+      lastLoadKey = "";
       await load();
       setStatus(
         updatesCheckedMessage(mods.length, readyCount),
@@ -1162,6 +1167,18 @@
           setStatus(modEndorsedOnNexus, "success");
           break;
         }
+        case "ignoreUpdate":
+          await API.SetModUpdateIgnored(mod.id, true);
+          lastLoadKey = "";
+          await load();
+          setStatus(modUpdateIgnoredMessage, "success");
+          break;
+        case "resumeUpdate":
+          await API.SetModUpdateIgnored(mod.id, false);
+          lastLoadKey = "";
+          await load();
+          setStatus(modUpdateResumedMessage, "success");
+          break;
         case "downloadUpdate": {
           const key = mod.manifest?.UpdateKeys?.find((k: string) =>
             k.startsWith("Nexus:"),
@@ -2025,6 +2042,7 @@
             onqueueinstall={openInstallModal}
             ontoggletag={toggleModTag}
             visibleColumns={settings?.visibleColumns}
+            lastUpdateCheck={settings?.lastUpdateCheck ?? 0}
             oncolumnschange={updateVisibleColumns}
           />
           {#if !downloadsOpen}
@@ -2034,8 +2052,11 @@
               {mods}
               {libraryMods}
               {categories}
+              lastUpdateCheck={settings?.lastUpdateCheck ?? 0}
               onclose={() => (selectedModId = null)}
               ondownloadupdate={downloadModUpdate}
+              onignoreupdate={(m) => runContextAction(m, "ignoreUpdate")}
+              onresumeupdate={(m) => runContextAction(m, "resumeUpdate")}
               onenabledependency={(modId) => toggleMod(modId, true)}
               onselectmod={(id) => (selectedModId = id)}
               onsetcustomname={setModCustomName}

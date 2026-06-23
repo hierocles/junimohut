@@ -36,4 +36,9 @@ export interface Settings {
     "windowHeight": number;
     "setupComplete": boolean;
     "lastUpdateCheck": number;
+
+    /**
+     * Nexus mod ID -> ignored latest version
+     */
+    "ignoredModUpdates"?: { [_ in string]?: string } | null;
 }

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"junimohut/internal/modoverwrites"
 	"junimohut/internal/mods"
 	"junimohut/internal/modtimes"
+	"junimohut/internal/modupdates"
 	"junimohut/internal/nexus"
 	"junimohut/internal/platform"
 	"junimohut/internal/profiles"
@@ -35,6 +37,7 @@ type App struct {
 	categories *categories.Service
 	modNames        *modnames.Service
 	modTimes        *modtimes.Service
+	modUpdates      *modupdates.Service
 	overwriteMerges *modoverwrites.Service
 	nexus           *nexus.Client
 	downloads     *nexus.DownloadManager
@@ -142,6 +145,12 @@ func (a *App) startup(ctx context.Context) error {
 	}
 	a.modTimes = modTimesSvc
 
+	modUpdatesSvc, err := modupdates.NewService(store.ModUpdatesPath())
+	if err != nil {
+		return err
+	}
+	a.modUpdates = modUpdatesSvc
+
 	overwriteSvc, err := modoverwrites.NewService(store.OverwriteMergesPath())
 	if err != nil {
 		return err
@@ -153,6 +162,7 @@ func (a *App) startup(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	downloadIndex.SetArchiveEnricher(enrichDownloadRecordFromArchive)
 	a.downloadIndex = downloadIndex
 	a.downloads = nexus.NewDownloadManager(store.DownloadsDir(), downloadIndex)
 	go downloadIndex.ReconcileAsync()
@@ -235,11 +245,45 @@ func (a *App) refreshMods() error {
 	list = mods.DedupeByUniqueID(mods.DedupeByID(list))
 	list = mods.ResolveDependencies(list)
 	a.mu.Lock()
+	previous := append([]mods.Mod{}, a.modsCache...)
+	a.mu.Unlock()
+	mods.PreserveUpdateStatus(list, previous)
+	mods.ApplyCachedUpdateStatus(list, cachedUpdatesFromService(a.modUpdates))
+	mods.ApplyIgnoredUpdates(list, settings.IgnoredModUpdates)
+	a.mu.Lock()
 	a.modsCache = list
 	a.mu.Unlock()
 
 	go a.finishModRefresh(list, enabled, settings)
 	return nil
+}
+
+func cachedUpdatesFromService(svc *modupdates.Service) map[string]mods.CachedUpdate {
+	if svc == nil {
+		return nil
+	}
+	raw := svc.All()
+	out := make(map[string]mods.CachedUpdate, len(raw))
+	for id, e := range raw {
+		out[id] = mods.CachedUpdate{
+			ManifestVersion: e.ManifestVersion,
+			State:           e.State,
+			LatestVersion:   e.LatestVersion,
+			ModPageURL:      e.ModPageURL,
+			Message:         e.Message,
+		}
+	}
+	return out
+}
+
+func (a *App) syncModUpdateCache() {
+	if a.modUpdates == nil {
+		return
+	}
+	a.mu.RLock()
+	list := append([]mods.Mod{}, a.modsCache...)
+	a.mu.RUnlock()
+	_ = a.modUpdates.SyncFromMods(list)
 }
 
 func (a *App) enrichModTimes(list []mods.Mod) {
@@ -558,13 +602,18 @@ func (a *App) UpdateMod(folderPath, archivePath string, deleteOld bool) error {
 	}
 	settings := a.store.Get()
 	installer := mods.NewInstaller(settings.ModsRoot)
-	if err := installer.UpdateMod(folderPath, archivePath, deleteOld); err != nil {
+	a.mu.RLock()
+	targets := mods.NexusSiblingFolderPaths(a.modsCache, folderPath)
+	a.mu.RUnlock()
+	if err := installer.UpdateMods(targets, archivePath, deleteOld); err != nil {
 		return err
 	}
-	if mod, ok := a.modByFolderPath(folderPath); ok {
-		fallback := mods.ManifestModTime(mod.AbsolutePath)
-		_ = a.modTimes.RecordUpdate(mod.ID, fallback)
-		a.downloadIndex.RecordInstall(archivePath, mod.Manifest.UniqueID, nexus.ModIDFromUpdateKeys(mod.Manifest.UpdateKeys))
+	for _, fp := range targets {
+		if mod, ok := a.modByFolderPath(fp); ok {
+			fallback := mods.ManifestModTime(mod.AbsolutePath)
+			_ = a.modTimes.RecordUpdate(mod.ID, fallback)
+			a.downloadIndex.RecordInstall(archivePath, mod.Manifest.UniqueID, nexus.ModIDFromUpdateKeys(mod.Manifest.UpdateKeys))
+		}
 	}
 	_ = a.refreshMods()
 	a.emitModsChanged()
@@ -811,16 +860,36 @@ func (a *App) CheckModUpdates() ([]smapi.ModUpdateResult, error) {
 		return nil, err
 	}
 	settings := a.store.Get()
-	if smapi.UpdateCheckRateLimited(settings.LastUpdateCheck, time.Now()) {
-		return nil, nil
+	now := time.Now()
+	if smapi.UpdateCheckRateLimited(settings.LastUpdateCheck, now) {
+		retryAfter := smapi.UpdateCheckRetryAfter(settings.LastUpdateCheck, now)
+		return nil, fmt.Errorf("%w — try again in %s", smapi.ErrUpdateCheckRateLimited, smapi.FormatUpdateCheckRetryAfter(retryAfter))
 	}
 	a.mu.RLock()
 	list := a.modsCache
 	a.mu.RUnlock()
 
 	var requests []smapi.ModUpdateRequest
+	seenNexus := map[int]bool{}
 	for _, m := range list {
 		if len(m.Manifest.UpdateKeys) == 0 {
+			continue
+		}
+		nexusID := nexus.ModIDFromUpdateKeys(m.Manifest.UpdateKeys)
+		if nexusID > 0 {
+			if seenNexus[nexusID] {
+				continue
+			}
+			seenNexus[nexusID] = true
+			rep, ok := mods.PickNexusGroupRepresentative(list, nexusID)
+			if !ok {
+				rep = m
+			}
+			requests = append(requests, smapi.ModUpdateRequest{
+				UniqueID:   rep.Manifest.UniqueID,
+				Version:    rep.Manifest.Version,
+				UpdateKeys: rep.Manifest.UpdateKeys,
+			})
 			continue
 		}
 		requests = append(requests, smapi.ModUpdateRequest{
@@ -836,24 +905,88 @@ func (a *App) CheckModUpdates() ([]smapi.ModUpdateResult, error) {
 	_ = a.store.Update(func(s *config.Settings) {
 		s.LastUpdateCheck = time.Now().Unix()
 	})
-	// merge into cache
 	resultMap := map[string]smapi.ModUpdateResult{}
 	for _, r := range results {
 		resultMap[r.UniqueID] = r
 	}
-	a.mu.Lock()
-	for i, m := range a.modsCache {
-		if r, ok := resultMap[m.Manifest.UniqueID]; ok {
-			a.modsCache[i].UpdateStatus = mods.UpdateStatus{
-				State:         mods.NormalizeUpdateState(r.Status),
-				LatestVersion: r.LatestVersion,
-				ModPageURL:    r.ModPageURL,
-				Message:       r.Message,
+	nexusResults := map[int]smapi.ModUpdateResult{}
+	for _, req := range requests {
+		if r, ok := resultMap[req.UniqueID]; ok {
+			if id := nexus.ModIDFromUpdateKeys(req.UpdateKeys); id > 0 {
+				nexusResults[id] = r
 			}
 		}
 	}
+	a.mu.Lock()
+	for i, m := range a.modsCache {
+		var r smapi.ModUpdateResult
+		var ok bool
+		if id := nexus.ModIDFromUpdateKeys(m.Manifest.UpdateKeys); id > 0 {
+			r, ok = nexusResults[id]
+		} else {
+			r, ok = resultMap[m.Manifest.UniqueID]
+		}
+		if !ok {
+			continue
+		}
+		a.modsCache[i].UpdateStatus = mods.UpdateStatus{
+			State:         mods.NormalizeUpdateState(r.Status),
+			LatestVersion: r.LatestVersion,
+			ModPageURL:    r.ModPageURL,
+			Message:       r.Message,
+		}
+	}
+	mods.PropagateNexusUpdateStatus(a.modsCache)
+	mods.ApplyIgnoredUpdates(a.modsCache, settings.IgnoredModUpdates)
 	a.mu.Unlock()
+	a.syncModUpdateCache()
 	return results, nil
+}
+
+func (a *App) SetModUpdateIgnored(modID string, ignored bool) error {
+	if err := a.ensureInit(); err != nil {
+		return err
+	}
+	a.mu.RLock()
+	var target mods.Mod
+	found := false
+	for _, m := range a.modsCache {
+		if m.ID == modID {
+			target = m
+			found = true
+			break
+		}
+	}
+	a.mu.RUnlock()
+	if !found {
+		return fmt.Errorf("mod not found")
+	}
+	nexusID := nexus.ModIDFromUpdateKeys(target.Manifest.UpdateKeys)
+	if nexusID == 0 {
+		return fmt.Errorf("mod has no Nexus update key")
+	}
+	latest := strings.TrimSpace(target.UpdateStatus.LatestVersion)
+	if ignored && latest == "" {
+		return fmt.Errorf("no available update to ignore")
+	}
+	key := strconv.Itoa(nexusID)
+	if err := a.store.Update(func(s *config.Settings) {
+		if s.IgnoredModUpdates == nil {
+			s.IgnoredModUpdates = map[string]string{}
+		}
+		if ignored {
+			s.IgnoredModUpdates[key] = latest
+		} else {
+			delete(s.IgnoredModUpdates, key)
+		}
+	}); err != nil {
+		return err
+	}
+	a.mu.Lock()
+	mods.ApplyIgnoredUpdates(a.modsCache, a.store.Get().IgnoredModUpdates)
+	a.mu.Unlock()
+	a.syncModUpdateCache()
+	return nil
 }
 
 func (a *App) ModsReadyToUpdate() int {
@@ -1100,6 +1233,28 @@ func (a *App) HandleNXMURL(url string) (string, error) {
 		return "", err
 	}
 	return a.downloadNexusFile(parsed.ModID, parsed.FileID, fmt.Sprintf("mod_%d", parsed.ModID), parsed.Auth)
+}
+
+func enrichDownloadRecordFromArchive(rec *nexus.DownloadRecord) {
+	if rec == nil || rec.ArchivePath == "" {
+		return
+	}
+	manifests, err := mods.ManifestsFromArchive(rec.ArchivePath)
+	if err != nil || len(manifests) == 0 {
+		return
+	}
+	manifest := manifests[0]
+	if rec.UniqueID == "" && manifest.UniqueID != "" {
+		rec.UniqueID = manifest.UniqueID
+	}
+	if rec.ModName == "" && manifest.Name != "" {
+		rec.ModName = manifest.Name
+	}
+	if rec.NexusModID == 0 {
+		if id := nexus.ModIDFromUpdateKeys(manifest.UpdateKeys); id > 0 {
+			rec.NexusModID = id
+		}
+	}
 }
 
 // --- File dialogs ---

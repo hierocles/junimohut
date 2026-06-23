@@ -207,7 +207,7 @@ export interface ModJsonSummary {
  */
 export interface UpdateStatus {
     /**
-     * current, update_available, incompatible, unofficial
+     * current, update_available, update_ignored, incompatible, unofficial
      */
     "state": string;
     "latestVersion": string;

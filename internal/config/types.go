@@ -19,7 +19,8 @@ type Settings struct {
 	WindowWidth             int      `json:"windowWidth"`
 	WindowHeight            int      `json:"windowHeight"`
 	SetupComplete           bool     `json:"setupComplete"`
-	LastUpdateCheck         int64    `json:"lastUpdateCheck"`
+	LastUpdateCheck         int64             `json:"lastUpdateCheck"`
+	IgnoredModUpdates       map[string]string `json:"ignoredModUpdates,omitempty"` // Nexus mod ID -> ignored latest version
 	NexusAPIKey string `json:"-"` // stored in keyring when set
 }
 

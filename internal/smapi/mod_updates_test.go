@@ -62,7 +62,6 @@ func TestMapModUpdateResults(t *testing.T) {
 }
 
 func TestPostModUpdates(t *testing.T) {
-	t.Parallel()
 	must := require.New(t)
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -102,4 +101,52 @@ func TestPostModUpdates(t *testing.T) {
 	must.Len(results, 1)
 	must.Equal("update", results[0].Status)
 	must.Equal("1.10.0", results[0].LatestVersion)
+}
+
+func TestPostModUpdatesHTTPError(t *testing.T) {
+	must := require.New(t)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "server error", http.StatusInternalServerError)
+	}))
+	t.Cleanup(srv.Close)
+
+	origBase := smapiModUpdateBaseURL
+	origClient := smapiHTTPClient
+	smapiModUpdateBaseURL = srv.URL + "/api"
+	smapiHTTPClient = srv.Client()
+	t.Cleanup(func() {
+		smapiModUpdateBaseURL = origBase
+		smapiHTTPClient = origClient
+	})
+
+	_, err := postModUpdates([]ModUpdateRequest{
+		{UniqueID: "Pathoschild.ContentPatcher", Version: "1.9.2", UpdateKeys: []string{"Nexus:1915"}},
+	}, "4.5.1")
+	must.Error(err)
+	must.Contains(err.Error(), "HTTP 500")
+}
+
+func TestPostModUpdatesInvalidJSON(t *testing.T) {
+	must := require.New(t)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("not json"))
+	}))
+	t.Cleanup(srv.Close)
+
+	origBase := smapiModUpdateBaseURL
+	origClient := smapiHTTPClient
+	smapiModUpdateBaseURL = srv.URL + "/api"
+	smapiHTTPClient = srv.Client()
+	t.Cleanup(func() {
+		smapiModUpdateBaseURL = origBase
+		smapiHTTPClient = origClient
+	})
+
+	_, err := postModUpdates([]ModUpdateRequest{
+		{UniqueID: "Pathoschild.ContentPatcher", Version: "1.9.2", UpdateKeys: []string{"Nexus:1915"}},
+	}, "4.5.1")
+	must.Error(err)
+	must.Contains(err.Error(), "invalid data")
 }

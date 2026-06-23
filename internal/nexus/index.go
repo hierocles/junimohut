@@ -9,9 +9,10 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"junimohut/internal/mods"
 )
+
+// ArchiveEnricher fills download-record metadata from a saved archive.
+type ArchiveEnricher func(rec *DownloadRecord)
 
 // DownloadRecord links a saved archive to mod identity metadata.
 type DownloadRecord struct {
@@ -29,10 +30,21 @@ type downloadIndexFile struct {
 
 // DownloadIndex persists download-to-mod associations in downloads.json.
 type DownloadIndex struct {
-	mu      sync.RWMutex
-	path    string
-	dir     string
-	records []DownloadRecord
+	mu            sync.RWMutex
+	path          string
+	dir           string
+	records       []DownloadRecord
+	enrichArchive ArchiveEnricher
+}
+
+// SetArchiveEnricher configures archive metadata enrichment for index records.
+func (idx *DownloadIndex) SetArchiveEnricher(fn ArchiveEnricher) {
+	if idx == nil {
+		return
+	}
+	idx.mu.Lock()
+	idx.enrichArchive = fn
+	idx.mu.Unlock()
 }
 
 // NewDownloadIndex loads or creates the download index and reconciles with disk.
@@ -332,23 +344,11 @@ func (idx *DownloadIndex) RecordInstall(archivePath, uniqueID string, nexusModID
 }
 
 func (idx *DownloadIndex) enrichRecordFromArchive(rec *DownloadRecord) {
-	if rec == nil || rec.ArchivePath == "" || !idx.fileExists(rec.ArchivePath) {
+	if rec == nil || rec.ArchivePath == "" || idx.enrichArchive == nil {
 		return
 	}
-	manifests, err := mods.ManifestsFromArchive(rec.ArchivePath)
-	if err != nil || len(manifests) == 0 {
+	if !idx.fileExists(rec.ArchivePath) {
 		return
 	}
-	manifest := manifests[0]
-	if rec.UniqueID == "" && manifest.UniqueID != "" {
-		rec.UniqueID = manifest.UniqueID
-	}
-	if rec.ModName == "" && manifest.Name != "" {
-		rec.ModName = manifest.Name
-	}
-	if rec.NexusModID == 0 {
-		if id := ModIDFromUpdateKeys(manifest.UpdateKeys); id > 0 {
-			rec.NexusModID = id
-		}
-	}
+	idx.enrichArchive(rec)
 }

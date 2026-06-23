@@ -169,6 +169,11 @@ func PackDisplayName(folderBase string) string {
 	return strings.TrimSpace(name)
 }
 
+// NexusModIDFromUpdateKeys returns the first Nexus mod ID in manifest UpdateKeys.
+func NexusModIDFromUpdateKeys(keys []string) int {
+	return nexusIDFromUpdateKeys(keys)
+}
+
 func nexusIDFromUpdateKeys(keys []string) int {
 	for _, key := range keys {
 		var id int

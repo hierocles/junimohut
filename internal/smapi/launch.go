@@ -10,9 +10,10 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/Masterminds/semver/v3"
 	"junimohut/internal/config"
 	"junimohut/internal/httpclient"
+
+	"github.com/Masterminds/semver/v3"
 )
 
 // Launcher starts SMAPI with the game's Mods folder (symlinked enabled mods).
@@ -127,18 +128,6 @@ type ModUpdateRequest struct {
 	UniqueID   string
 	Version    string
 	UpdateKeys []string
-}
-
-func checkModUpdatesFallback(mods []ModUpdateRequest) ([]ModUpdateResult, error) {
-	results := make([]ModUpdateResult, len(mods))
-	for i, m := range mods {
-		results[i] = ModUpdateResult{
-			UniqueID:       m.UniqueID,
-			CurrentVersion: m.Version,
-			Status:         "ok",
-		}
-	}
-	return results, nil
 }
 
 // InstallSMAPI downloads and runs the SMAPI installer (Windows).

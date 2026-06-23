@@ -131,16 +131,19 @@ func postModUpdates(mods []ModUpdateRequest, smapiVersion string) ([]ModUpdateRe
 
 	resp, err := httpclient.DoWithRetry(smapiHTTPClient, req, 3)
 	if err != nil {
-		return checkModUpdatesFallback(mods)
+		return nil, fmt.Errorf("could not reach SMAPI update service: %w", err)
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(resp.Body)
-	if err != nil || resp.StatusCode >= 400 {
-		return checkModUpdatesFallback(mods)
+	if err != nil {
+		return nil, fmt.Errorf("read SMAPI update response: %w", err)
+	}
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("SMAPI update check failed: HTTP %d", resp.StatusCode)
 	}
 	var entries []modSearchResponseEntry
 	if err := json.Unmarshal(raw, &entries); err != nil {
-		return checkModUpdatesFallback(mods)
+		return nil, fmt.Errorf("SMAPI update check returned invalid data: %w", err)
 	}
 	return mapModUpdateResults(mods, entries), nil
 }

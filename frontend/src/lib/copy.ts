@@ -321,6 +321,11 @@ export function deletedDownloadMessage(displayName: string): string {
 }
 export const launchingSmapi = "Launching SMAPI…";
 export const checkingModUpdates = "Checking for mod updates…";
+export const modNotCheckedLabel = "Not checked";
+export const detailIgnoreUpdateLabel = "Ignore this update";
+export const detailResumeUpdateLabel = "Resume update notices";
+export const modUpdateIgnoredMessage = "Update notice hidden for this mod.";
+export const modUpdateResumedMessage = "Update notices resumed for this mod.";
 export const modEndorsedOnNexus = "Mod endorsed on Nexus Mods.";
 export const noNexusUpdateKey = "No Nexus update key for this mod.";
 export const tagAddedToMod = "Tag added to mod.";
@@ -667,6 +672,8 @@ export const contextMenuEditConfig = "Edit configs";
 export const contextMenuViewNexus = "View on Nexus Mods";
 export const contextMenuEndorse = "Endorse on Nexus Mods";
 export const contextMenuDownloadUpdate = "Download update";
+export const contextMenuIgnoreUpdate = "Ignore this update";
+export const contextMenuResumeUpdate = "Resume update notices";
 export const contextMenuDeleteMod = "Delete mod…";
 
 export const dialogCancelLabel = "Cancel";

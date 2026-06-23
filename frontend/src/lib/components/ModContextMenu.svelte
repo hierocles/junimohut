@@ -9,6 +9,8 @@
     contextMenuViewNexus,
     contextMenuEndorse,
     contextMenuDownloadUpdate,
+    contextMenuIgnoreUpdate,
+    contextMenuResumeUpdate,
     contextMenuDeleteMod,
   } from "$lib/copy";
 
@@ -26,8 +28,14 @@
 
   const hasSavedDownload = $derived(!!mod?.savedDownloadPath?.trim());
   const hasNexus = $derived(
-    mod?.manifest?.UpdateKeys?.some((k: string) => k.startsWith("Nexus:")) ?? false,
+    mod?.manifest?.UpdateKeys?.some((k: string) => k.startsWith("Nexus:")) ??
+      false,
   );
+  const hasUpdate = $derived(
+    mod?.updateStatus?.state === "update" ||
+      mod?.updateStatus?.state === "update_available",
+  );
+  const updateIgnored = $derived(mod?.updateStatus?.state === "update_ignored");
 
   const menuPos = $derived({
     left: Math.min(x, Math.max(0, window.innerWidth - 220)),
@@ -48,7 +56,15 @@
       ? [
           { action: "openPage", label: contextMenuViewNexus },
           { action: "endorse", label: contextMenuEndorse },
-          { action: "downloadUpdate", label: contextMenuDownloadUpdate },
+          ...(hasUpdate
+            ? [{ action: "ignoreUpdate", label: contextMenuIgnoreUpdate }]
+            : []),
+          ...(updateIgnored
+            ? [{ action: "resumeUpdate", label: contextMenuResumeUpdate }]
+            : []),
+          ...(hasUpdate
+            ? [{ action: "downloadUpdate", label: contextMenuDownloadUpdate }]
+            : []),
         ]
       : []),
     { action: "delete", label: contextMenuDeleteMod, danger: true },
@@ -109,7 +125,7 @@
         <button
           type="button"
           class="overlay-menu-item truncate"
-          class:overlay-menu-item--danger={'danger' in item && item.danger}
+          class:overlay-menu-item--danger={"danger" in item && item.danger}
           role="menuitem"
           onclick={() => onaction(item.action)}
         >

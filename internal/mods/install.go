@@ -135,6 +135,16 @@ func copyDir(src, dst string) error {
 	})
 }
 
+// UpdateMods applies an archive to each folder path (e.g. Nexus multi-part mods).
+func (i *Installer) UpdateMods(folderPaths []string, archivePath string, deleteOld bool) error {
+	for _, folderPath := range folderPaths {
+		if err := i.UpdateMod(folderPath, archivePath, deleteOld); err != nil {
+			return fmt.Errorf("%s: %w", folderPath, err)
+		}
+	}
+	return nil
+}
+
 // DeleteMod removes a mod folder from the mods root.
 func (i *Installer) DeleteMod(folderPath string) error {
 	abs := filepath.Join(i.ModsRoot, filepath.FromSlash(folderPath))

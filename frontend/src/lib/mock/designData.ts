@@ -547,6 +547,7 @@ export const MOCK_SETTINGS: Settings = {
   windowHeight: 900,
   setupComplete: true,
   lastUpdateCheck: 1711929600,
+  ignoredModUpdates: {},
 };
 
 export function getMockRefreshData(search: string, hideDisabled: string) {

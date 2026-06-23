@@ -32,6 +32,8 @@
     modContainsOverwritesTooltip,
     modOfficialNameLabel,
     modRenameLabel,
+    detailIgnoreUpdateLabel,
+    detailResumeUpdateLabel,
     configEditorEditConfig,
   } from "$lib/copy";
   import { nexusModPageUrl, nexusSearchUrl } from "$lib/mods/dependencies";
@@ -46,8 +48,11 @@
      *  the current search/filter are still recognised as installed. */
     libraryMods: Mod[];
     categories: Category[];
+    lastUpdateCheck?: number;
     onclose: () => void;
     ondownloadupdate: (mod: Mod) => Promise<void>;
+    onignoreupdate?: (mod: Mod) => void | Promise<void>;
+    onresumeupdate?: (mod: Mod) => void | Promise<void>;
     onenabledependency?: (modId: string) => void | Promise<void>;
     onselectmod?: (modId: string) => void;
     onsetcustomname?: (modId: string, name: string) => void | Promise<void>;
@@ -59,8 +64,11 @@
     mods,
     libraryMods,
     categories,
+    lastUpdateCheck = 0,
     onclose,
     ondownloadupdate,
+    onignoreupdate,
+    onresumeupdate,
     onenabledependency,
     onselectmod,
     onsetcustomname,
@@ -92,9 +100,13 @@
       : [],
   );
 
-  const dependencyRows = $derived(mod ? dependencyRowsForMod(mod, libraryMods) : []);
+  const dependencyRows = $derived(
+    mod ? dependencyRowsForMod(mod, libraryMods) : [],
+  );
   const hasDependencies = $derived(dependencyRows.length > 0);
-  const dependentRows = $derived(mod ? dependentRowsForMod(mod, libraryMods) : []);
+  const dependentRows = $derived(
+    mod ? dependentRowsForMod(mod, libraryMods) : [],
+  );
   const dependencyIssueCount = $derived(
     mod?.missingDependencyCount ?? mod?.dependencyIssues?.length ?? 0,
   );
@@ -103,10 +115,20 @@
     mod != null &&
       (mod.updateStatus?.state === "update" ||
         mod.updateStatus?.state === "update_available" ||
+        mod.updateStatus?.state === "update_ignored" ||
         mod.updateStatus?.state === "incompatible" ||
         mod.updateStatus?.state === "unofficial" ||
         !!mod.updateStatus?.message?.trim() ||
         !!mod.updateStatus?.modPageUrl),
+  );
+
+  const canIgnoreUpdate = $derived(
+    mod != null &&
+      (mod.updateStatus?.state === "update" ||
+        mod.updateStatus?.state === "update_available"),
+  );
+  const canResumeUpdate = $derived(
+    mod?.updateStatus?.state === "update_ignored",
   );
 
   const canDownload = $derived(
@@ -117,7 +139,7 @@
   );
 
   const modStatus = $derived(
-    mod ? modStatusInfo(mod) : { text: "", badge: "" },
+    mod ? modStatusInfo(mod, lastUpdateCheck) : { text: "", badge: "" },
   );
 
   $effect(() => {
@@ -826,6 +848,26 @@
                 onclick={downloadUpdate}
               >
                 {downloading ? "Downloading…" : "Download update"}
+              </button>
+            {/if}
+            {#if canIgnoreUpdate && onignoreupdate && mod}
+              <button
+                type="button"
+                class="btn btn-sm preset-tonal"
+                style="margin-top: var(--space-2);"
+                onclick={() => void onignoreupdate(mod)}
+              >
+                {detailIgnoreUpdateLabel}
+              </button>
+            {/if}
+            {#if canResumeUpdate && onresumeupdate && mod}
+              <button
+                type="button"
+                class="btn btn-sm preset-tonal"
+                style="margin-top: var(--space-2);"
+                onclick={() => void onresumeupdate(mod)}
+              >
+                {detailResumeUpdateLabel}
               </button>
             {/if}
           {/if}

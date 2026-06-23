@@ -36,8 +36,7 @@ func TestDownloadIndexRecordAndLoad(t *testing.T) {
 	downloadsDir := filepath.Join(dataDir, "downloads")
 	must.NoError(os.MkdirAll(downloadsDir, 0o755))
 
-	idx, err := NewDownloadIndex(dataDir, downloadsDir)
-	must.NoError(err)
+	idx := newTestDownloadIndex(t, dataDir, downloadsDir)
 
 	archive := filepath.Join(downloadsDir, "CoolMod.zip")
 	must.NoError(os.WriteFile(archive, []byte("zip"), 0o644))
@@ -50,8 +49,7 @@ func TestDownloadIndexRecordAndLoad(t *testing.T) {
 		DownloadedAt: 100,
 	}))
 
-	reloaded, err := NewDownloadIndex(dataDir, downloadsDir)
-	must.NoError(err)
+	reloaded := newTestDownloadIndex(t, dataDir, downloadsDir)
 	path, ok := reloaded.FindForMod("Author.CoolMod", 0)
 	must.True(ok)
 	must.Equal(archive, path)
@@ -66,16 +64,14 @@ func TestDownloadIndexPrunesMissingFiles(t *testing.T) {
 	must.NoError(os.MkdirAll(downloadsDir, 0o755))
 
 	missing := filepath.Join(downloadsDir, "gone.zip")
-	idx, err := NewDownloadIndex(dataDir, downloadsDir)
-	must.NoError(err)
+	idx := newTestDownloadIndex(t, dataDir, downloadsDir)
 	must.NoError(idx.Record(DownloadRecord{
 		ArchivePath:  missing,
 		UniqueID:     "Author.Gone",
 		DownloadedAt: time.Now().Unix(),
 	}))
 
-	reloaded, err := NewDownloadIndex(dataDir, downloadsDir)
-	must.NoError(err)
+	reloaded := newTestDownloadIndex(t, dataDir, downloadsDir)
 	reloaded.Reconcile()
 	_, ok := reloaded.FindForMod("Author.Gone", 0)
 	must.False(ok)
@@ -95,8 +91,7 @@ func TestDownloadIndexFindPrefersUniqueID(t *testing.T) {
 		must.NoError(os.WriteFile(path, []byte("zip"), 0o644))
 	}
 
-	idx, err := NewDownloadIndex(dataDir, downloadsDir)
-	must.NoError(err)
+	idx := newTestDownloadIndex(t, dataDir, downloadsDir)
 	must.NoError(idx.Record(DownloadRecord{
 		ArchivePath: older, NexusModID: 99, UniqueID: "Author.Mod", DownloadedAt: 100,
 	}))
@@ -122,8 +117,7 @@ func TestDownloadIndexReconcileIndexesUnlistedArchive(t *testing.T) {
 		"manifest.json": `{"Name":"Scanned","Author":"A","Version":"1.0.0","UniqueID":"Author.Scanned"}`,
 	})
 
-	idx, err := NewDownloadIndex(dataDir, downloadsDir)
-	must.NoError(err)
+	idx := newTestDownloadIndex(t, dataDir, downloadsDir)
 	idx.Reconcile()
 	path, ok := idx.FindForMod("Author.Scanned", 0)
 	must.True(ok)
@@ -154,8 +148,7 @@ func TestDownloadIndexEnrichesNumericUpdateKeys(t *testing.T) {
 		}`,
 	})
 
-	idx, err := NewDownloadIndex(dataDir, downloadsDir)
-	must.NoError(err)
+	idx := newTestDownloadIndex(t, dataDir, downloadsDir)
 	idx.Reconcile()
 	list := idx.List()
 	must.Len(list, 1)
@@ -191,8 +184,7 @@ func TestDownloadIndexReconcileBackfillsMissingUniqueID(t *testing.T) {
 		"records":[{"archivePath":`+strconv.Quote(filepath.ToSlash(archive))+`,"fileName":"KnownMod.zip","downloadedAt":100}]
 	}`), 0o644))
 
-	idx, err := NewDownloadIndex(dataDir, downloadsDir)
-	must.NoError(err)
+	idx := newTestDownloadIndex(t, dataDir, downloadsDir)
 	idx.Reconcile()
 	list := idx.List()
 	must.Len(list, 1)
@@ -206,8 +198,7 @@ func TestDownloadIndexInDownloadsDir(t *testing.T) {
 
 	dataDir := t.TempDir()
 	downloadsDir := filepath.Join(dataDir, "downloads")
-	idx, err := NewDownloadIndex(dataDir, downloadsDir)
-	must.NoError(err)
+	idx := newTestDownloadIndex(t, dataDir, downloadsDir)
 	inside := filepath.Join(downloadsDir, "mod.zip")
 	outside := filepath.Join(dataDir, "other.zip")
 	must.True(idx.InDownloadsDir(inside))
@@ -228,8 +219,7 @@ func TestDownloadIndexListAndDelete(t *testing.T) {
 		must.NoError(os.WriteFile(path, []byte("zip"), 0o644))
 	}
 
-	idx, err := NewDownloadIndex(dataDir, downloadsDir)
-	must.NoError(err)
+	idx := newTestDownloadIndex(t, dataDir, downloadsDir)
 	must.NoError(idx.Record(DownloadRecord{
 		ArchivePath: older, FileName: "older.zip", DownloadedAt: 100,
 	}))
@@ -242,7 +232,7 @@ func TestDownloadIndexListAndDelete(t *testing.T) {
 	must.Equal(newer, list[0].ArchivePath)
 
 	must.NoError(idx.Delete(newer))
-	_, err = os.Stat(newer)
+	_, err := os.Stat(newer)
 	must.True(os.IsNotExist(err))
 	list = idx.List()
 	must.Len(list, 1)

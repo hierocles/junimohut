@@ -1,1 +1,0 @@
-{"version":3,"file":"portal.js","sourceRoot":"","sources":["portal.ts"],"names":[],"mappings":"AAAA,wEAAwE;AACxE,MAAM,UAAU,MAAM,CAAC,IAAiB;IACtC,QAAQ,CAAC,IAAI,CAAC,WAAW,CAAC,IAAI,CAAC,CAAC;IAChC,OAAO;QACL,OAAO;YACL,IAAI,CAAC,MAAM,EAAE,CAAC;QAChB,CAAC;KACF,CAAC;AACJ,CAAC"}

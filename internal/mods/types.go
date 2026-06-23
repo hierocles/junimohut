@@ -83,7 +83,7 @@ type InstallOverwritePreview struct {
 
 // UpdateStatus describes mod update state.
 type UpdateStatus struct {
-	State         string `json:"state"` // current, update_available, incompatible, unofficial
+	State         string `json:"state"` // current, update_available, update_ignored, incompatible, unofficial
 	LatestVersion string `json:"latestVersion"`
 	ModPageURL    string `json:"modPageUrl"`
 	Message       string `json:"message"`

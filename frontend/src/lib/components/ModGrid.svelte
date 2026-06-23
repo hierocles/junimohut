@@ -77,6 +77,7 @@
       assign: boolean,
     ) => void | Promise<void>;
     visibleColumns?: string[] | null;
+    lastUpdateCheck?: number;
     oncolumnschange?: (columns: GridColumnId[]) => void | Promise<void>;
   }
 
@@ -97,6 +98,7 @@
     onqueueinstall,
     ontoggletag,
     visibleColumns = null,
+    lastUpdateCheck = 0,
     oncolumnschange,
   }: Props = $props();
 
@@ -561,7 +563,7 @@
     badge: string | null;
     title?: string;
   } {
-    const info = modStatusInfo(mod);
+    const info = modStatusInfo(mod, lastUpdateCheck);
     return { text: info.text, badge: info.badge, title: info.title };
   }
 

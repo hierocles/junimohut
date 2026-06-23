@@ -1,5 +1,9 @@
 import type { Mod } from "$lib/api/client";
-import { dependencyIssuesTooltip, missingDependencyBadge } from "$lib/copy";
+import {
+  dependencyIssuesTooltip,
+  missingDependencyBadge,
+  modNotCheckedLabel,
+} from "$lib/copy";
 
 export type ModStatusInfo = {
   text: string;
@@ -7,12 +11,17 @@ export type ModStatusInfo = {
   title?: string;
 };
 
-export function modStatusInfo(mod: Mod): ModStatusInfo {
+export function modStatusInfo(mod: Mod, lastUpdateCheck = 0): ModStatusInfo {
   const state = mod.updateStatus?.state;
   if (state === "update" || state === "update_available") {
     const latest = mod.updateStatus?.latestVersion;
     const text = latest ? `Update to v${latest}` : "Update on Nexus";
     return { text, badge: "state-badge state-badge--update" };
+  }
+  if (state === "update_ignored") {
+    const latest = mod.updateStatus?.latestVersion;
+    const text = latest ? `v${latest} ignored` : "Update ignored";
+    return { text, badge: "state-badge state-badge--muted" };
   }
   if (state === "incompatible") {
     const msg = mod.updateStatus?.message?.trim();
@@ -40,6 +49,12 @@ export function modStatusInfo(mod: Mod): ModStatusInfo {
     return { text: "Core", badge: "state-badge state-badge--info" };
   }
   if (mod.enabled) {
+    if (lastUpdateCheck === 0) {
+      return {
+        text: modNotCheckedLabel,
+        badge: "state-badge state-badge--muted",
+      };
+    }
     return { text: "Up to date", badge: "state-badge state-badge--success" };
   }
   return { text: "Disabled", badge: "state-badge state-badge--muted" };

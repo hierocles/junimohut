@@ -334,6 +334,10 @@ export function SetModEnabled(modID: string, enabled: boolean): $CancellableProm
     return $Call.ByID(1151537538, modID, enabled);
 }
 
+export function SetModUpdateIgnored(modID: string, ignored: boolean): $CancellablePromise<void> {
+    return $Call.ByID(2266797034, modID, ignored);
+}
+
 export function SetNexusAPIKey(key: string): $CancellablePromise<void> {
     return $Call.ByID(127370205, key);
 }
