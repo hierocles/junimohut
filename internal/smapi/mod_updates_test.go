@@ -22,7 +22,7 @@ func TestBuildModSearchRequest(t *testing.T) {
 	must.Equal("1.9.2", req.Mods[0].InstalledVersion)
 	must.Equal([]string{"Nexus:1915"}, req.Mods[0].UpdateKeys)
 	must.Equal("4.5.1", req.APIVersion)
-	must.False(req.IncludeExtendedMetadata)
+	must.True(req.IncludeExtendedMetadata)
 }
 
 func TestAPIPathVersion(t *testing.T) {
@@ -59,6 +59,66 @@ func TestMapModUpdateResults(t *testing.T) {
 	must.Equal("1.10.0", results[0].LatestVersion)
 	must.Equal("ok", results[1].Status)
 	must.Equal("page missing", results[1].Message)
+}
+
+func TestMapModUpdateResultsCompatibility(t *testing.T) {
+	t.Parallel()
+	must := require.New(t)
+
+	mods := []ModUpdateRequest{{UniqueID: "Author.BrokenMod", Version: "1.0.0"}}
+	entries := []modSearchResponseEntry{
+		{
+			ID: "Author.BrokenMod",
+			Metadata: &modSearchMetadata{
+				CompatibilityStatus:  "Broken",
+				CompatibilitySummary: "<p>Needs update for 1.6.</p>",
+				NexusID:              42,
+			},
+		},
+	}
+	results := mapModUpdateResults(mods, entries)
+	must.Equal("incompatible", results[0].Status)
+	must.Equal("Broken", results[0].CompatibilityStatus)
+	must.Equal("Needs update for 1.6.", results[0].CompatibilitySummary)
+	must.Equal("https://www.nexusmods.com/stardewvalley/mods/42", results[0].ModPageURL)
+}
+
+func TestMapModUpdateResultsUnofficial(t *testing.T) {
+	t.Parallel()
+	must := require.New(t)
+
+	mods := []ModUpdateRequest{{UniqueID: "Author.UnofficialMod", Version: "1.0.0"}}
+	entries := []modSearchResponseEntry{
+		{
+			ID: "Author.UnofficialMod",
+			Metadata: &modSearchMetadata{
+				Unofficial: &modVersionRef{Version: "1.1.0", URL: "https://example.com/unofficial"},
+			},
+		},
+	}
+	results := mapModUpdateResults(mods, entries)
+	must.Equal("unofficial", results[0].Status)
+	must.Equal("1.1.0", results[0].LatestVersion)
+	must.Equal("https://example.com/unofficial", results[0].ModPageURL)
+}
+
+func TestMapModUpdateResultsUpdateWinsOverBroken(t *testing.T) {
+	t.Parallel()
+	must := require.New(t)
+
+	mods := []ModUpdateRequest{{UniqueID: "Author.Mod", Version: "1.0.0"}}
+	entries := []modSearchResponseEntry{
+		{
+			ID: "Author.Mod",
+			SuggestedUpdate: &struct {
+				Version string `json:"version"`
+				URL     string `json:"url"`
+			}{Version: "2.0.0", URL: "https://example.com/mod"},
+			Metadata: &modSearchMetadata{CompatibilityStatus: "Broken"},
+		},
+	}
+	results := mapModUpdateResults(mods, entries)
+	must.Equal("update", results[0].Status)
 }
 
 func TestPostModUpdates(t *testing.T) {

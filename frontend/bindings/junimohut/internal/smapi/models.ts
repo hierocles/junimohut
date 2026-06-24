@@ -10,11 +10,13 @@ export interface ModUpdateResult {
     "latestVersion": string;
 
     /**
-     * update, ok, incompatible
+     * update, ok, incompatible, unofficial
      */
     "status": string;
     "modPageUrl": string;
     "message": string;
+    "compatibilityStatus"?: string;
+    "compatibilitySummary"?: string;
 }
 
 /**

@@ -110,6 +110,7 @@ func buildNexusBundle(nexusID int, children []Mod, enabled map[string]bool) Mod 
 	manifest.Name = bundleDisplayName(children)
 	manifest.UniqueID = packUID
 	manifest.EntryDll = ""
+	manifest.Version = newestChildVersion(children)
 	if len(manifest.UpdateKeys) == 0 {
 		manifest.UpdateKeys = []string{fmt.Sprintf("Nexus:%d", nexusID)}
 	}
@@ -233,6 +234,20 @@ func pickBundlePrimaryChild(children []Mod) Mod {
 		}
 	}
 	return children[0]
+}
+
+func newestChildVersion(children []Mod) string {
+	best := ""
+	for _, c := range children {
+		v := strings.TrimSpace(c.Manifest.Version)
+		if v == "" {
+			continue
+		}
+		if best == "" || versionGreater(v, best) {
+			best = v
+		}
+	}
+	return best
 }
 
 func bundleDisplayName(children []Mod) string {

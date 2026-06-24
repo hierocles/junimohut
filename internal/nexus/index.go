@@ -215,6 +215,39 @@ func (idx *DownloadIndex) FindForMod(uniqueID string, nexusModID int) (string, b
 	return "", false
 }
 
+// NexusModIDForMod returns a Nexus mod ID from saved downloads when manifest keys are missing.
+func (idx *DownloadIndex) NexusModIDForMod(uniqueID string, nexusModID int) int {
+	if nexusModID > 0 {
+		return nexusModID
+	}
+	if idx == nil {
+		return 0
+	}
+	idx.mu.RLock()
+	defer idx.mu.RUnlock()
+	var best DownloadRecord
+	var found bool
+	for _, rec := range idx.records {
+		if rec.NexusModID <= 0 || !idx.fileExists(rec.ArchivePath) {
+			continue
+		}
+		if uniqueID != "" && rec.UniqueID != "" && rec.UniqueID != uniqueID {
+			continue
+		}
+		if uniqueID == "" && rec.UniqueID == "" {
+			continue
+		}
+		if !found || rec.DownloadedAt > best.DownloadedAt {
+			best = rec
+			found = true
+		}
+	}
+	if !found {
+		return 0
+	}
+	return best.NexusModID
+}
+
 func (idx *DownloadIndex) bestMatchLocked(match func(DownloadRecord) bool) (string, bool) {
 	var best DownloadRecord
 	var found bool

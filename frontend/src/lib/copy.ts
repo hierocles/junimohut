@@ -687,6 +687,32 @@ export function gridDependencyFilterLabel(count: number): string {
   return count === 1 ? "1 dependency issue" : `${count} dependency issues`;
 }
 
+export function gridIncompatibleFilterLabel(count: number): string {
+  return count === 1 ? "1 incompatible mod" : `${count} incompatible mods`;
+}
+
+export function gridIncompatibleFilterEmptyTitle(): string {
+  return "No incompatible mods";
+}
+
+export function gridIncompatibleFilterEmptyHint(): string {
+  return "Clear the filter or run Check Updates to refresh compatibility status.";
+}
+
+export function incompatibleFilterFooterMessage(count: number): string {
+  return count === 1
+    ? "Showing 1 incompatible mod."
+    : `Showing ${count} incompatible mods.`;
+}
+
+export function incompatibleIssueCountLabel(count: number): string {
+  return count === 1 ? "incompatible mod" : "incompatible mods";
+}
+
+export const modDatasetLoadError =
+  "Could not load mod page info from the dataset.";
+export const modDatasetLoading = "Loading mod page info…";
+
 export function gridUpdatesFilterEmptyTitle(): string {
   return "No mods with updates available";
 }
@@ -712,6 +738,8 @@ export const gridUpdatesFilterMeta =
   "Showing mods with an update in the Status column";
 export const gridDependencyFilterMeta =
   "Showing mods with missing or unsatisfied dependencies";
+export const gridIncompatibleFilterMeta =
+  "Showing mods marked incompatible on the SMAPI wiki";
 export const gridTagsFilteringMeta =
   "Hides rows only — enabled mods and SMAPI are unchanged";
 export function gridTagsFilteringBadge(count: number): string {

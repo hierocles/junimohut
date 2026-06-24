@@ -254,7 +254,7 @@ func (i *Installer) UpdateMod(folderPath, archivePath string, deleteOld bool) er
 		entries, _ := os.ReadDir(dest)
 		for _, e := range entries {
 			name := e.Name()
-			if strings.EqualFold(name, "config.json") || strings.EqualFold(name, "manifest.json") {
+			if strings.EqualFold(name, "config.json") {
 				continue
 			}
 			_ = os.RemoveAll(filepath.Join(dest, name))
@@ -277,7 +277,29 @@ func (i *Installer) UpdateMod(folderPath, archivePath string, deleteOld bool) er
 	if err != nil {
 		return err
 	}
-	return copyDir(srcDir, dest)
+	if err := copyDir(srcDir, dest); err != nil {
+		return err
+	}
+	return writeUpdateManifest(dest, manifests)
+}
+
+func writeUpdateManifest(dest string, rootManifests []string) error {
+	incoming, err := pickUpdateManifest(rootManifests, dest)
+	if err != nil {
+		return nil
+	}
+	data, err := os.ReadFile(incoming)
+	if err != nil {
+		return err
+	}
+	destManifest := filepath.Join(dest, "manifest.json")
+	if existing, err := ParseManifest(destManifest); err == nil && existing.UniqueID != "" {
+		incomingManifest, err := ParseManifest(incoming)
+		if err == nil && !UniqueIDsEqual(existing.UniqueID, incomingManifest.UniqueID) {
+			return nil
+		}
+	}
+	return os.WriteFile(destManifest, data, 0o644)
 }
 
 func pickUpdateManifest(rootManifests []string, existingFolder string) (string, error) {

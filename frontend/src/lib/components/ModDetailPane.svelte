@@ -37,6 +37,13 @@
     configEditorEditConfig,
   } from "$lib/copy";
   import { nexusModPageUrl, nexusSearchUrl } from "$lib/mods/dependencies";
+  import { resolvedNexusModId } from "$lib/mods/resolveNexus";
+  import * as API from "$lib/api";
+  import {
+    modDatasetLoadError,
+    modDatasetLoading,
+    formatUserError,
+  } from "$lib/copy";
   import { openExternalUrl } from "$lib/wails/openExternalUrl";
   import {
     bundlePartTypeLabel,
@@ -132,9 +139,7 @@
     mod?.missingDependencyCount ?? mod?.dependencyIssues?.length ?? 0,
   );
   const hasDependents = $derived(dependentRows.length > 0);
-  const isBundleChild = $derived(
-    mod != null && isBundleChildMod(mods, mod),
-  );
+  const isBundleChild = $derived(mod != null && isBundleChildMod(mods, mod));
 
   const hasUpdateTab = $derived(
     !isBundleChild &&
@@ -145,6 +150,8 @@
         mod.updateStatus?.state === "incompatible" ||
         mod.updateStatus?.state === "unofficial" ||
         !!mod.updateStatus?.message?.trim() ||
+        !!mod.updateStatus?.compatibilityStatus?.trim() ||
+        !!mod.updateStatus?.compatibilitySummary?.trim() ||
         !!mod.updateStatus?.modPageUrl),
   );
 
@@ -169,6 +176,55 @@
   const modStatus = $derived(
     mod ? modStatusInfo(mod, lastUpdateCheck) : { text: "", badge: "" },
   );
+
+  const nexusPageId = $derived(mod ? resolvedNexusModId(mod) : 0);
+  const modPageUrl = $derived(
+    mod?.updateStatus?.modPageUrl?.trim() ||
+      (nexusPageId > 0 ? nexusModPageUrl(String(nexusPageId)) : ""),
+  );
+
+  type DatasetPageState =
+    | { status: "idle" }
+    | { status: "loading" }
+    | {
+        status: "ready";
+        officialName: string;
+        tagLine: string;
+        downloadCount: number;
+      }
+    | { status: "error"; message: string };
+
+  let datasetPage = $state<DatasetPageState>({ status: "idle" });
+
+  $effect(() => {
+    const uid = mod?.manifest?.UniqueID?.trim();
+    if (!uid) {
+      datasetPage = { status: "idle" };
+      return;
+    }
+    let cancelled = false;
+    datasetPage = { status: "loading" };
+    void API.GetModDatasetPage(uid)
+      .then((page) => {
+        if (cancelled) return;
+        datasetPage = {
+          status: "ready",
+          officialName: page.name ?? "",
+          tagLine: page.tagLine ?? "",
+          downloadCount: page.downloads?.length ?? 0,
+        };
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        datasetPage = {
+          status: "error",
+          message: formatUserError(error) || modDatasetLoadError,
+        };
+      });
+    return () => {
+      cancelled = true;
+    };
+  });
 
   $effect(() => {
     selectedModId;
@@ -547,6 +603,58 @@
                       </dd>
                     </div>
                   {/if}
+                  {#if modPageUrl}
+                    <div class="field-row">
+                      <dt>Mod page</dt>
+                      <dd>
+                        <a
+                          class="anchor"
+                          href={modPageUrl}
+                          onclick={(event) => {
+                            event.preventDefault();
+                            void openExternalUrl(modPageUrl);
+                          }}
+                        >
+                          Open on Nexus Mods
+                        </a>
+                      </dd>
+                    </div>
+                  {/if}
+                  {#if datasetPage.status === "loading"}
+                    <div class="field-row">
+                      <dt>Dataset</dt>
+                      <dd class="type-meta text-surface-400">
+                        {modDatasetLoading}
+                      </dd>
+                    </div>
+                  {:else if datasetPage.status === "ready"}
+                    {#if datasetPage.tagLine}
+                      <div class="field-row field-row-block">
+                        <dt>Tagline</dt>
+                        <dd class="type-meta text-surface-300">
+                          {datasetPage.tagLine}
+                        </dd>
+                      </div>
+                    {/if}
+                    {#if datasetPage.downloadCount > 0}
+                      <div class="field-row">
+                        <dt>Downloads</dt>
+                        <dd class="type-meta text-surface-300">
+                          {datasetPage.downloadCount} active file{datasetPage.downloadCount ===
+                          1
+                            ? ""
+                            : "s"} in dataset
+                        </dd>
+                      </div>
+                    {/if}
+                  {:else if datasetPage.status === "error"}
+                    <div class="field-row field-row-block">
+                      <dt>Dataset</dt>
+                      <dd class="type-meta text-surface-500">
+                        {datasetPage.message}
+                      </dd>
+                    </div>
+                  {/if}
                 </dl>
               </section>
 
@@ -863,6 +971,20 @@
                 <div class="field-row">
                   <dt>Latest version</dt>
                   <dd class="state-update">{mod.updateStatus.latestVersion}</dd>
+                </div>
+              {/if}
+              {#if mod.updateStatus?.compatibilityStatus?.trim()}
+                <div class="field-row">
+                  <dt>Compatibility</dt>
+                  <dd>{mod.updateStatus.compatibilityStatus}</dd>
+                </div>
+              {/if}
+              {#if mod.updateStatus?.compatibilitySummary?.trim()}
+                <div class="field-row field-row-block">
+                  <dt>Compatibility note</dt>
+                  <dd class="type-prose type-meta text-surface-300">
+                    {mod.updateStatus.compatibilitySummary}
+                  </dd>
                 </div>
               {/if}
               {#if mod.updateStatus?.message?.trim()}

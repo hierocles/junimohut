@@ -1,6 +1,7 @@
 package mods
 
 import (
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -102,11 +103,8 @@ func PropagateNexusIgnoredStatus(list []Mod) {
 // NexusSiblingFolderPaths returns every installed folder path sharing the same Nexus mod ID.
 func NexusSiblingFolderPaths(list []Mod, folderPath string) []string {
 	targetID := 0
-	for _, m := range list {
-		if m.FolderPath == folderPath {
-			targetID = NexusModIDFromUpdateKeys(m.Manifest.UpdateKeys)
-			break
-		}
+	if mod, ok := FindModByFolderPath(list, folderPath); ok {
+		targetID = NexusModIDFromUpdateKeys(mod.Manifest.UpdateKeys)
 	}
 	if targetID == 0 {
 		return []string{folderPath}
@@ -116,11 +114,44 @@ func NexusSiblingFolderPaths(list []Mod, folderPath string) []string {
 		if NexusModIDFromUpdateKeys(m.Manifest.UpdateKeys) == targetID {
 			paths = append(paths, m.FolderPath)
 		}
+		for _, child := range m.BundleChildren {
+			if NexusModIDFromUpdateKeys(child.Manifest.UpdateKeys) == targetID {
+				paths = append(paths, child.FolderPath)
+			}
+		}
 	}
 	if len(paths) == 0 {
 		return []string{folderPath}
 	}
 	return paths
+}
+
+// FindModByFolderPath finds a mod or bundle child by library folder path.
+func FindModByFolderPath(list []Mod, folderPath string) (Mod, bool) {
+	folderPath = filepath.ToSlash(strings.TrimSpace(folderPath))
+	for _, m := range list {
+		if m.FolderPath == folderPath {
+			return m, true
+		}
+		for _, child := range m.BundleChildren {
+			if child.FolderPath == folderPath {
+				return child, true
+			}
+		}
+	}
+	return Mod{}, false
+}
+
+// ResolveUpdateFolderPaths returns installed folders that should receive an in-place update.
+func ResolveUpdateFolderPaths(list []Mod, folderPath string) []string {
+	if mod, ok := FindModByFolderPath(list, folderPath); ok && len(mod.BundleChildren) > 0 {
+		paths := make([]string, 0, len(mod.BundleChildren))
+		for _, child := range mod.BundleChildren {
+			paths = append(paths, child.FolderPath)
+		}
+		return paths
+	}
+	return NexusSiblingFolderPaths(list, folderPath)
 }
 
 // PickNexusGroupRepresentative returns the mod with the lowest version in a Nexus group.

@@ -14,6 +14,7 @@ import (
 
 	"junimohut/internal/categories"
 	"junimohut/internal/config"
+	"junimohut/internal/moddataset"
 	"junimohut/internal/modnames"
 	"junimohut/internal/modoverwrites"
 	"junimohut/internal/mods"
@@ -58,6 +59,7 @@ type App struct {
 	assembleMu         sync.Mutex
 	unmanagedModsCache []profiles.UnmanagedMod
 	duplicateModsCache []mods.DuplicateModGroup
+	modDataset         *moddataset.Index
 }
 
 func NewApp() *App {
@@ -167,6 +169,13 @@ func (a *App) startup(ctx context.Context) error {
 	a.downloadIndex = downloadIndex
 	a.downloads = nexus.NewDownloadManager(store.DownloadsDir(), downloadIndex)
 	go downloadIndex.ReconcileAsync()
+
+	modDatasetIdx, err := moddataset.NewIndex(store.ModDatasetIndexPath(), store.ModDatasetDir())
+	if err != nil {
+		return err
+	}
+	a.modDataset = modDatasetIdx
+	go modDatasetIdx.RefreshIfStaleAsync()
 
 	_ = a.refreshMods()
 	_, _ = mods.NewWatcher(store.Get().ModsRoot, func() {
@@ -282,6 +291,7 @@ func (a *App) refreshMods() error {
 	}
 	list = mods.DedupeByUniqueID(mods.DedupeByID(list))
 	list = mods.ResolveDependencies(list)
+	a.enrichModsFromDataset(list)
 	a.mu.Lock()
 	previous := append([]mods.Mod{}, a.modsCache...)
 	a.mu.Unlock()
@@ -304,11 +314,13 @@ func cachedUpdatesFromService(svc *modupdates.Service) map[string]mods.CachedUpd
 	out := make(map[string]mods.CachedUpdate, len(raw))
 	for id, e := range raw {
 		out[id] = mods.CachedUpdate{
-			ManifestVersion: e.ManifestVersion,
-			State:           e.State,
-			LatestVersion:   e.LatestVersion,
-			ModPageURL:      e.ModPageURL,
-			Message:         e.Message,
+			ManifestVersion:      e.ManifestVersion,
+			State:                e.State,
+			LatestVersion:        e.LatestVersion,
+			ModPageURL:           e.ModPageURL,
+			Message:              e.Message,
+			CompatibilityStatus:  e.CompatibilityStatus,
+			CompatibilitySummary: e.CompatibilitySummary,
 		}
 	}
 	return out
@@ -342,6 +354,38 @@ func (a *App) enrichModTimes(list []mods.Mod) {
 	_ = a.modTimes.SeedBatch(seeds)
 }
 
+func (a *App) enrichModsFromDataset(list []mods.Mod) {
+	if a.modDataset == nil {
+		return
+	}
+	enrich := func(mod *mods.Mod) {
+		manifestNexus := nexus.ModIDFromUpdateKeys(mod.Manifest.UpdateKeys)
+		downloadNexus := 0
+		if a.downloadIndex != nil {
+			downloadNexus = a.downloadIndex.NexusModIDForMod(mod.Manifest.UniqueID, manifestNexus)
+		}
+		mod.ResolvedNexusModID = moddataset.ResolveNexusModID(
+			mod.Manifest.UniqueID,
+			mod.Manifest.UpdateKeys,
+			a.modDataset,
+			downloadNexus,
+			mod.BundleNexusID,
+		)
+		if mod.UpdateStatus.ModPageURL == "" && mod.ResolvedNexusModID > 0 {
+			mod.UpdateStatus.ModPageURL = fmt.Sprintf(
+				"https://www.nexusmods.com/stardewvalley/mods/%d",
+				mod.ResolvedNexusModID,
+			)
+		}
+	}
+	for i := range list {
+		enrich(&list[i])
+		for j := range list[i].BundleChildren {
+			enrich(&list[i].BundleChildren[j])
+		}
+	}
+}
+
 func (a *App) finishModRefresh(list []mods.Mod, enabled map[string]bool, settings config.Settings) {
 	a.assembleMu.Lock()
 	defer a.assembleMu.Unlock()
@@ -350,7 +394,10 @@ func (a *App) finishModRefresh(list []mods.Mod, enabled map[string]bool, setting
 		if list[i].IsCoreMod {
 			continue
 		}
-		nexusModID := nexus.ModIDFromUpdateKeys(list[i].Manifest.UpdateKeys)
+		nexusModID := list[i].ResolvedNexusModID
+		if nexusModID == 0 {
+			nexusModID = nexus.ModIDFromUpdateKeys(list[i].Manifest.UpdateKeys)
+		}
 		if path, ok := a.downloadIndex.FindForMod(list[i].Manifest.UniqueID, nexusModID); ok {
 			list[i].SavedDownloadPath = path
 		}
@@ -671,7 +718,7 @@ func (a *App) UpdateMod(folderPath, archivePath string, deleteOld bool) error {
 	settings := a.store.Get()
 	installer := mods.NewInstaller(settings.ModsRoot)
 	a.mu.RLock()
-	targets := mods.NexusSiblingFolderPaths(a.modsCache, folderPath)
+	targets := mods.ResolveUpdateFolderPaths(a.modsCache, folderPath)
 	a.mu.RUnlock()
 	if err := installer.UpdateMods(targets, archivePath, deleteOld); err != nil {
 		return err
@@ -684,6 +731,10 @@ func (a *App) UpdateMod(folderPath, archivePath string, deleteOld bool) error {
 		}
 	}
 	_ = a.refreshMods()
+	a.mu.Lock()
+	mods.ClearUpdateStatusAfterModUpdate(a.modsCache, targets)
+	a.mu.Unlock()
+	a.syncModUpdateCache()
 	a.emitModsChanged()
 	return nil
 }
@@ -803,12 +854,7 @@ func (a *App) modUniqueIDFor(modID string) string {
 func (a *App) modByFolderPath(folderPath string) (mods.Mod, bool) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
-	for _, mod := range a.modsCache {
-		if mod.FolderPath == folderPath {
-			return mod, true
-		}
-	}
-	return mods.Mod{}, false
+	return mods.FindModByFolderPath(a.modsCache, folderPath)
 }
 
 // --- Categories ---
@@ -939,11 +985,16 @@ func (a *App) CheckModUpdates() ([]smapi.ModUpdateResult, error) {
 
 	var requests []smapi.ModUpdateRequest
 	seenNexus := map[int]bool{}
+	seenUnique := map[string]bool{}
 	for _, m := range list {
-		if len(m.Manifest.UpdateKeys) == 0 {
+		updateKeys := append([]string(nil), m.Manifest.UpdateKeys...)
+		if len(updateKeys) == 0 && a.modDataset != nil {
+			updateKeys = moddataset.NexusUpdateKeysFromIndex(a.modDataset, m.Manifest.UniqueID)
+		}
+		if len(updateKeys) == 0 {
 			continue
 		}
-		nexusID := nexus.ModIDFromUpdateKeys(m.Manifest.UpdateKeys)
+		nexusID := nexus.ModIDFromUpdateKeys(updateKeys)
 		if nexusID > 0 {
 			if seenNexus[nexusID] {
 				continue
@@ -957,17 +1008,29 @@ func (a *App) CheckModUpdates() ([]smapi.ModUpdateResult, error) {
 			} else if groupRep, ok := mods.PickNexusGroupRepresentative(list, nexusID); ok {
 				rep = groupRep
 			}
+			if seenUnique[rep.Manifest.UniqueID] {
+				continue
+			}
+			seenUnique[rep.Manifest.UniqueID] = true
+			keys := rep.Manifest.UpdateKeys
+			if len(keys) == 0 {
+				keys = updateKeys
+			}
 			requests = append(requests, smapi.ModUpdateRequest{
 				UniqueID:   rep.Manifest.UniqueID,
 				Version:    rep.Manifest.Version,
-				UpdateKeys: rep.Manifest.UpdateKeys,
+				UpdateKeys: keys,
 			})
 			continue
 		}
+		if seenUnique[m.Manifest.UniqueID] {
+			continue
+		}
+		seenUnique[m.Manifest.UniqueID] = true
 		requests = append(requests, smapi.ModUpdateRequest{
 			UniqueID:   m.Manifest.UniqueID,
 			Version:    m.Manifest.Version,
-			UpdateKeys: m.Manifest.UpdateKeys,
+			UpdateKeys: updateKeys,
 		})
 	}
 	results, err := smapi.CheckModUpdates(requests, a.GetSMAPIVersion())
@@ -993,8 +1056,12 @@ func (a *App) CheckModUpdates() ([]smapi.ModUpdateResult, error) {
 	for i, m := range a.modsCache {
 		var r smapi.ModUpdateResult
 		var ok bool
-		if id := nexus.ModIDFromUpdateKeys(m.Manifest.UpdateKeys); id > 0 {
-			r, ok = nexusResults[id]
+		nexusID := m.ResolvedNexusModID
+		if nexusID == 0 {
+			nexusID = nexus.ModIDFromUpdateKeys(m.Manifest.UpdateKeys)
+		}
+		if nexusID > 0 {
+			r, ok = nexusResults[nexusID]
 		} else {
 			r, ok = resultMap[m.Manifest.UniqueID]
 		}
@@ -1002,10 +1069,12 @@ func (a *App) CheckModUpdates() ([]smapi.ModUpdateResult, error) {
 			continue
 		}
 		a.modsCache[i].UpdateStatus = mods.UpdateStatus{
-			State:         mods.NormalizeUpdateState(r.Status),
-			LatestVersion: r.LatestVersion,
-			ModPageURL:    r.ModPageURL,
-			Message:       r.Message,
+			State:                mods.NormalizeUpdateState(r.Status),
+			LatestVersion:        r.LatestVersion,
+			ModPageURL:           r.ModPageURL,
+			Message:              r.Message,
+			CompatibilityStatus:  r.CompatibilityStatus,
+			CompatibilitySummary: r.CompatibilitySummary,
 		}
 	}
 	mods.PropagateNexusUpdateStatus(a.modsCache)
@@ -1080,6 +1149,35 @@ func (a *App) ModsWithDependencyIssues() int {
 		}
 	}
 	return n
+}
+
+func (a *App) ModsIncompatible() int {
+	if err := a.ensureInit(); err != nil {
+		return 0
+	}
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	n := 0
+	for _, m := range a.modsCache {
+		if m.UpdateStatus.State == "incompatible" {
+			n++
+		}
+	}
+	return n
+}
+
+func (a *App) GetModDatasetPage(uniqueID string) (moddataset.ModPage, error) {
+	if err := a.ensureInit(); err != nil {
+		return moddataset.ModPage{}, err
+	}
+	if a.modDataset == nil {
+		return moddataset.ModPage{}, fmt.Errorf("mod dataset not available")
+	}
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return moddataset.FetchModPageForUniqueID(ctx, a.modDataset, uniqueID)
 }
 
 func (a *App) ListUnmanagedMods() []profiles.UnmanagedMod {

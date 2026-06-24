@@ -108,12 +108,14 @@ func CheckSMAPIUpdate(currentVersion string) (UpdateInfo, error) {
 
 // ModUpdateResult from SMAPI mod update API.
 type ModUpdateResult struct {
-	UniqueID       string `json:"uniqueId"`
-	CurrentVersion string `json:"currentVersion"`
-	LatestVersion  string `json:"latestVersion"`
-	Status         string `json:"status"` // update, ok, incompatible
-	ModPageURL     string `json:"modPageUrl"`
-	Message        string `json:"message"`
+	UniqueID             string `json:"uniqueId"`
+	CurrentVersion       string `json:"currentVersion"`
+	LatestVersion        string `json:"latestVersion"`
+	Status               string `json:"status"` // update, ok, incompatible, unofficial
+	ModPageURL           string `json:"modPageUrl"`
+	Message              string `json:"message"`
+	CompatibilityStatus  string `json:"compatibilityStatus,omitempty"`
+	CompatibilitySummary string `json:"compatibilitySummary,omitempty"`
 }
 
 // CheckModUpdates queries SMAPI's mod update service via POST /api/v{version}/mods.

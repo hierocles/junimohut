@@ -21,6 +21,9 @@ import * as categories$0 from "./internal/categories/models.js";
 import * as config$0 from "./internal/config/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as moddataset$0 from "./internal/moddataset/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as mods$0 from "./internal/mods/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -141,6 +144,10 @@ export function GetModConfigFile(modID: string, relPath: string): $CancellablePr
     return $Call.ByID(664102657, modID, relPath);
 }
 
+export function GetModDatasetPage(uniqueID: string): $CancellablePromise<moddataset$0.ModPage> {
+    return $Call.ByID(3915838432, uniqueID);
+}
+
 /**
  * GetNexusSuggestedTags maps Nexus mod page categories to existing user tag IDs.
  */
@@ -214,6 +221,10 @@ export function ListSavedDownloads(): $CancellablePromise<nexus$0.DownloadRecord
 
 export function ListUnmanagedMods(): $CancellablePromise<profiles$0.UnmanagedMod[] | null> {
     return $Call.ByID(2868957870);
+}
+
+export function ModsIncompatible(): $CancellablePromise<number> {
+    return $Call.ByID(159135705);
 }
 
 export function ModsReadyToUpdate(): $CancellablePromise<number> {

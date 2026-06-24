@@ -83,22 +83,30 @@ export async function refreshFooterStats() {
     return {
       readyCount: data.readyCount,
       dependencyIssueCount: data.dependencyIssueCount,
+      incompatibleCount: data.incompatibleCount ?? 0,
       unmanagedMods: data.unmanagedMods,
       duplicateMods: data.duplicateMods ?? [],
     };
   }
 
-  const [readyCount, dependencyIssueCount, unmanagedMods, duplicateMods] =
-    await Promise.all([
-      API.ModsReadyToUpdate(),
-      API.ModsWithDependencyIssues(),
-      API.ListUnmanagedMods(),
-      API.ListDuplicateMods(),
-    ]);
+  const [
+    readyCount,
+    dependencyIssueCount,
+    incompatibleCount,
+    unmanagedMods,
+    duplicateMods,
+  ] = await Promise.all([
+    API.ModsReadyToUpdate(),
+    API.ModsWithDependencyIssues(),
+    API.ModsIncompatible(),
+    API.ListUnmanagedMods(),
+    API.ListDuplicateMods(),
+  ]);
 
   return {
     readyCount: readyCount ?? 0,
     dependencyIssueCount: dependencyIssueCount ?? 0,
+    incompatibleCount: incompatibleCount ?? 0,
     unmanagedMods: unmanagedMods ?? [],
     duplicateMods: duplicateMods ?? [],
   };

@@ -24,12 +24,15 @@ export function modStatusInfo(mod: Mod, lastUpdateCheck = 0): ModStatusInfo {
     return { text, badge: "state-badge state-badge--muted" };
   }
   if (state === "incompatible") {
+    const compat = mod.updateStatus?.compatibilityStatus?.trim();
+    const summary = mod.updateStatus?.compatibilitySummary?.trim();
     const msg = mod.updateStatus?.message?.trim();
-    const text = msg || "Incompatible";
+    const text = compat || msg || "Incompatible";
+    const title = summary || (msg && msg.length > 40 ? msg : undefined);
     return {
       text,
       badge: "state-badge state-badge--error",
-      title: msg && msg.length > 40 ? msg : undefined,
+      title,
     };
   }
 
@@ -43,7 +46,9 @@ export function modStatusInfo(mod: Mod, lastUpdateCheck = 0): ModStatusInfo {
   }
 
   if (state === "unofficial") {
-    return { text: "Unofficial", badge: "state-badge state-badge--muted" };
+    const latest = mod.updateStatus?.latestVersion?.trim();
+    const text = latest ? `Unofficial v${latest}` : "Unofficial";
+    return { text, badge: "state-badge state-badge--muted" };
   }
   if (mod.isCoreMod) {
     return { text: "Core", badge: "state-badge state-badge--info" };

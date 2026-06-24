@@ -83,6 +83,33 @@ func TestUpdateModWithDeleteOld(t *testing.T) {
 	must.True(strings.Contains(string(config), "keep"))
 }
 
+func TestUpdateModBumpsManifestVersion(t *testing.T) {
+	must := require.New(t)
+
+	root := t.TempDir()
+	modDir := filepath.Join(root, "TestMod")
+	must.NoError(os.MkdirAll(modDir, 0o755))
+	oldManifest := `{"Name":"Test Mod","Author":"A","Version":"1.0.0","UniqueID":"A.TestMod"}`
+	must.NoError(os.WriteFile(filepath.Join(modDir, "manifest.json"), []byte(oldManifest), 0o644))
+
+	archivePath := filepath.Join(t.TempDir(), "update.zip")
+	newManifest := `{"Name":"Test Mod","Author":"A","Version":"2.0.0","UniqueID":"A.TestMod"}`
+	writeTestZip(t, archivePath, map[string]string{
+		"manifest.json": newManifest,
+		"new.dll":       "new content",
+	})
+
+	installer := NewInstaller(root)
+	must.NoError(installer.UpdateMod("TestMod", archivePath, true))
+
+	onDisk, err := os.ReadFile(filepath.Join(modDir, "manifest.json"))
+	must.NoError(err)
+	parsed, err := ParseManifest(filepath.Join(modDir, "manifest.json"))
+	must.NoError(err)
+	must.Contains(string(onDisk), `"Version":"2.0.0"`)
+	must.Equal("2.0.0", parsed.Version)
+}
+
 func TestUpdateModWithoutDeleteOld(t *testing.T) {
 	must := require.New(t)
 

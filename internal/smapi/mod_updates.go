@@ -33,13 +33,26 @@ type modSearchRequest struct {
 	IncludeExtendedMetadata bool             `json:"includeExtendedMetadata"`
 }
 
+type modVersionRef struct {
+	Version string `json:"version"`
+	URL     string `json:"url"`
+}
+
+type modSearchMetadata struct {
+	CompatibilityStatus  string         `json:"compatibilityStatus"`
+	CompatibilitySummary string         `json:"compatibilitySummary"`
+	NexusID              int            `json:"nexusID"`
+	Unofficial           *modVersionRef `json:"unofficial"`
+}
+
 type modSearchResponseEntry struct {
 	ID              string `json:"id"`
 	SuggestedUpdate *struct {
 		Version string `json:"version"`
 		URL     string `json:"url"`
 	} `json:"suggestedUpdate"`
-	Errors []string `json:"errors"`
+	Metadata *modSearchMetadata `json:"metadata"`
+	Errors   []string           `json:"errors"`
 }
 
 func apiPathVersion(smapiVersion string) string {
@@ -84,7 +97,43 @@ func buildModSearchRequest(mods []ModUpdateRequest, smapiVersion string) modSear
 		Mods:                    entries,
 		APIVersion:              apiVer,
 		Platform:                platformName(),
-		IncludeExtendedMetadata: false,
+		IncludeExtendedMetadata: true,
+	}
+}
+
+func nexusModPageURL(id int) string {
+	if id <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("https://www.nexusmods.com/stardewvalley/mods/%d", id)
+}
+
+func applyMetadata(r *ModUpdateResult, meta *modSearchMetadata) {
+	if meta == nil {
+		return
+	}
+	r.CompatibilityStatus = strings.TrimSpace(meta.CompatibilityStatus)
+	if summary := StripCompatibilityHTML(meta.CompatibilitySummary); summary != "" {
+		r.CompatibilitySummary = summary
+	}
+	if r.ModPageURL == "" {
+		if meta.NexusID > 0 {
+			r.ModPageURL = nexusModPageURL(meta.NexusID)
+		}
+	}
+	if r.Status == "ok" {
+		if meta.Unofficial != nil && strings.TrimSpace(meta.Unofficial.Version) != "" {
+			r.Status = "unofficial"
+			r.LatestVersion = meta.Unofficial.Version
+			if r.ModPageURL == "" && strings.TrimSpace(meta.Unofficial.URL) != "" {
+				r.ModPageURL = meta.Unofficial.URL
+			}
+		} else if state := MapCompatibilityStatus(meta.CompatibilityStatus); state != "" {
+			r.Status = state
+		}
+	}
+	if r.Message == "" && r.CompatibilitySummary != "" {
+		r.Message = r.CompatibilitySummary
 	}
 }
 
@@ -106,8 +155,14 @@ func mapModUpdateResults(mods []ModUpdateRequest, entries []modSearchResponseEnt
 				r.ModPageURL = e.SuggestedUpdate.URL
 				r.Status = "update"
 			}
+			applyMetadata(&r, e.Metadata)
 			if len(e.Errors) > 0 {
-				r.Message = strings.Join(e.Errors, "; ")
+				errMsg := strings.Join(e.Errors, "; ")
+				if r.Message == "" {
+					r.Message = errMsg
+				} else {
+					r.Message = r.Message + "; " + errMsg
+				}
 			}
 		}
 		results[i] = r

@@ -10,11 +10,13 @@ import (
 
 // Entry is a persisted update check result for one mod at a specific installed version.
 type Entry struct {
-	ManifestVersion string `json:"manifestVersion"`
-	State           string `json:"state"`
-	LatestVersion   string `json:"latestVersion,omitempty"`
-	ModPageURL      string `json:"modPageUrl,omitempty"`
-	Message         string `json:"message,omitempty"`
+	ManifestVersion      string `json:"manifestVersion"`
+	State                string `json:"state"`
+	LatestVersion        string `json:"latestVersion,omitempty"`
+	ModPageURL           string `json:"modPageUrl,omitempty"`
+	Message              string `json:"message,omitempty"`
+	CompatibilityStatus  string `json:"compatibilityStatus,omitempty"`
+	CompatibilitySummary string `json:"compatibilitySummary,omitempty"`
 }
 
 type store struct {
@@ -91,11 +93,13 @@ func (s *Service) SyncFromMods(list []mods.Mod) error {
 func entryFromMod(m mods.Mod) Entry {
 	st := m.UpdateStatus
 	return Entry{
-		ManifestVersion: m.Manifest.Version,
-		State:           st.State,
-		LatestVersion:   st.LatestVersion,
-		ModPageURL:      st.ModPageURL,
-		Message:         st.Message,
+		ManifestVersion:      m.Manifest.Version,
+		State:                st.State,
+		LatestVersion:        st.LatestVersion,
+		ModPageURL:           st.ModPageURL,
+		Message:              st.Message,
+		CompatibilityStatus:  st.CompatibilityStatus,
+		CompatibilitySummary: st.CompatibilitySummary,
 	}
 }
 

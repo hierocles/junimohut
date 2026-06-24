@@ -1,6 +1,10 @@
 import type { Category, Mod } from "$lib/api/client";
 
-export type GridStatusFilter = "none" | "updates" | "dependencies";
+export type GridStatusFilter =
+  | "none"
+  | "updates"
+  | "dependencies"
+  | "incompatible";
 
 /** Tag visibility filter — display only; does not change mod enabled state. */
 export function filterByCategories(mods: Mod[], categories: Category[]): Mod[] {
@@ -24,12 +28,17 @@ export function modHasDependencyIssues(mod: Mod): boolean {
   return (mod.missingDependencyCount ?? 0) > 0;
 }
 
+export function modIsIncompatible(mod: Mod): boolean {
+  return mod.updateStatus?.state === "incompatible";
+}
+
 export function filterByGridStatus(
   mods: Mod[],
   filter: GridStatusFilter,
 ): Mod[] {
   if (filter === "none") return mods;
   if (filter === "updates") return mods.filter(modHasUpdateAvailable);
+  if (filter === "incompatible") return mods.filter(modIsIncompatible);
   return mods.filter(modHasDependencyIssues);
 }
 

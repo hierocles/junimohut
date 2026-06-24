@@ -83,10 +83,12 @@ type InstallOverwritePreview struct {
 
 // UpdateStatus describes mod update state.
 type UpdateStatus struct {
-	State         string `json:"state"` // current, update_available, update_ignored, incompatible, unofficial
-	LatestVersion string `json:"latestVersion"`
-	ModPageURL    string `json:"modPageUrl"`
-	Message       string `json:"message"`
+	State                string `json:"state"` // current, update_available, update_ignored, incompatible, unofficial
+	LatestVersion        string `json:"latestVersion"`
+	ModPageURL           string `json:"modPageUrl"`
+	Message              string `json:"message"`
+	CompatibilityStatus  string `json:"compatibilityStatus,omitempty"`
+	CompatibilitySummary string `json:"compatibilitySummary,omitempty"`
 }
 
 // Mod is a discovered mod with runtime state.
@@ -115,6 +117,7 @@ type Mod struct {
 	SavedDownloadPath      string            `json:"savedDownloadPath,omitempty"`
 	CustomName             string            `json:"customName,omitempty"`
 	ContainsOverwrites     bool              `json:"containsOverwrites"`
+	ResolvedNexusModID     int               `json:"resolvedNexusModId,omitempty"`
 }
 
 // DeleteModsResult summarizes bulk mod deletion.

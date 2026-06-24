@@ -159,6 +159,7 @@ export interface Mod {
     "savedDownloadPath"?: string;
     "customName"?: string;
     "containsOverwrites": boolean;
+    "resolvedNexusModId"?: number;
 }
 
 /**
@@ -217,6 +218,8 @@ export interface UpdateStatus {
     "latestVersion": string;
     "modPageUrl": string;
     "message": string;
+    "compatibilityStatus"?: string;
+    "compatibilitySummary"?: string;
 }
 
 /**

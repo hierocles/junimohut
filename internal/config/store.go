@@ -78,6 +78,12 @@ func (s *Store) ConfigPath() string {
 func (s *Store) DownloadsDir() string {
 	return filepath.Join(s.dataDir, "downloads")
 }
+func (s *Store) ModDatasetDir() string {
+	return filepath.Join(s.dataDir, "mod-dataset")
+}
+func (s *Store) ModDatasetIndexPath() string {
+	return filepath.Join(s.ModDatasetDir(), "index.json")
+}
 
 func (s *Store) Get() Settings {
 	s.mu.RLock()
@@ -121,7 +127,7 @@ func (s *Store) save() error {
 
 // EnsureDirs creates required application data directories.
 func (s *Store) EnsureDirs() error {
-	for _, dir := range []string{s.ProfilesDir(), s.SelectedModsDir(), s.DownloadsDir()} {
+	for _, dir := range []string{s.ProfilesDir(), s.SelectedModsDir(), s.DownloadsDir(), s.ModDatasetDir()} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return err
 		}

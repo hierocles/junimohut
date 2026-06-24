@@ -35,6 +35,8 @@
     hutProverb,
     dependencyIssuesFooterMessage,
     dependencyIssueCountLabel,
+    incompatibleIssueCountLabel,
+    incompatibleFilterFooterMessage,
     unmanagedModCountLabel,
     duplicateModCountLabel,
     duplicateModsCleanupSuccess,
@@ -112,6 +114,7 @@
   import { nexusModPageUrl } from "$lib/mods/dependencies";
   import { openExternalUrl } from "$lib/wails/openExternalUrl";
   import type { GridStatusFilter } from "$lib/mods/filter";
+  import { resolvedNexusModId } from "$lib/mods/resolveNexus";
   import { displayModName } from "$lib/mods/names";
   import {
     bundleDeleteFolderPaths,
@@ -153,6 +156,7 @@
   let smapiVersion = $state("");
   let readyCount = $state(0);
   let dependencyIssueCount = $state(0);
+  let incompatibleCount = $state(0);
   let unmanagedModCount = $state(0);
   let unmanagedMods = $state<UnmanagedMod[]>([]);
   let unmanagedModsOpen = $state(false);
@@ -559,11 +563,11 @@
     }
   }
 
-  async function load() {
+  async function load(options?: { force?: boolean }) {
     const search = searchDebounced;
     let filter = hideDisabled;
     const key = `${search}\0${filter}`;
-    if (key === lastLoadKey) return;
+    if (!options?.force && key === lastLoadKey) return;
 
     const seq = ++loadSeq;
     loading = true;
@@ -601,6 +605,7 @@
       if (seq !== loadSeq) return;
       readyCount = stats.readyCount;
       dependencyIssueCount = stats.dependencyIssueCount;
+      incompatibleCount = stats.incompatibleCount;
       unmanagedMods = stats.unmanagedMods;
       unmanagedModCount = unmanagedMods.length;
       duplicateMods = stats.duplicateMods;
@@ -622,9 +627,8 @@
     void refreshNexusConnection();
     void checkSMAPIUpdate();
     Events.On("mods-changed", () => {
-      if (loading) return;
       lastLoadKey = "";
-      void load();
+      void load({ force: true });
     });
     Events.On("nxm-url", (ev) => {
       if (ev.data) void handleNXMURL(ev.data);
@@ -1078,7 +1082,7 @@
     }
     await API.UpdateMod(mod.folderPath, trimmed, deleteOld);
     setStatus(reinstallSavedSuccessLine(displayModName(mod)), "success");
-    await load();
+    await load({ force: true });
   }
 
   async function runInstall(
@@ -1099,7 +1103,7 @@
         );
         const name = displayModName(installUpdateTarget);
         setStatus(updatedModMessage(name), "success");
-        await load();
+        await load({ force: true });
         return [
           {
             folderPath: installUpdateTarget.folderPath,
@@ -1200,14 +1204,9 @@
           detailPane?.focusDisplayNameInput();
           break;
         case "openPage": {
-          const key = mod.manifest?.UpdateKeys?.find((k: string) =>
-            k.startsWith("Nexus:"),
-          );
-          if (key) {
-            const id = key.split(":")[1];
-            void openExternalUrl(
-              `https://www.nexusmods.com/stardewvalley/mods/${id}`,
-            );
+          const nexusId = resolvedNexusModId(mod);
+          if (nexusId > 0) {
+            void openExternalUrl(nexusModPageUrl(String(nexusId)));
           }
           break;
         }
@@ -1658,6 +1657,17 @@
     );
   }
 
+  function showIncompatibleFilter() {
+    gridStatusFilter =
+      gridStatusFilter === "incompatible" ? "none" : "incompatible";
+    setStatus(
+      gridStatusFilter === "incompatible"
+        ? incompatibleFilterFooterMessage(incompatibleCount)
+        : filterCleared,
+      "default",
+    );
+  }
+
   async function cleanupDuplicateMods() {
     if (duplicateCleanupBusy || duplicateMods.length === 0) return;
     duplicateCleanupBusy = true;
@@ -1747,6 +1757,21 @@
           >
             <span class="update-badge-count">{dependencyIssueCount}</span>
             <span>{dependencyIssueCountLabel(dependencyIssueCount)}</span>
+          </button>
+        {/if}
+        {#if incompatibleCount > 0}
+          <button
+            type="button"
+            class="update-badge update-badge--deps"
+            class:update-badge--active={gridStatusFilter === "incompatible"}
+            aria-pressed={gridStatusFilter === "incompatible"}
+            onclick={showIncompatibleFilter}
+            title={gridStatusFilter === "incompatible"
+              ? "Clear incompatible filter"
+              : "Show incompatible mods"}
+          >
+            <span class="update-badge-count">{incompatibleCount}</span>
+            <span>{incompatibleIssueCountLabel(incompatibleCount)}</span>
           </button>
         {/if}
         {#if unmanagedModCount > 0}

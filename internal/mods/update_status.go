@@ -1,5 +1,10 @@
 package mods
 
+import (
+	"path/filepath"
+	"strings"
+)
+
 // NormalizeUpdateState maps SMAPI update API statuses to canonical mod update states.
 func NormalizeUpdateState(smapiStatus string) string {
 	switch smapiStatus {
@@ -56,11 +61,13 @@ func PreserveUpdateStatus(list []Mod, previous []Mod) {
 
 // CachedUpdate is a persisted update check result for one mod.
 type CachedUpdate struct {
-	ManifestVersion string
-	State           string
-	LatestVersion   string
-	ModPageURL      string
-	Message         string
+	ManifestVersion      string
+	State                string
+	LatestVersion        string
+	ModPageURL           string
+	Message              string
+	CompatibilityStatus  string
+	CompatibilitySummary string
 }
 
 // ApplyCachedUpdateStatus restores persisted update results after a rescan when the
@@ -79,11 +86,64 @@ func ApplyCachedUpdateStatus(list []Mod, cached map[string]CachedUpdate) {
 			continue
 		}
 		list[i].UpdateStatus = UpdateStatus{
-			State:         entry.State,
-			LatestVersion: entry.LatestVersion,
-			ModPageURL:    entry.ModPageURL,
-			Message:       entry.Message,
+			State:                entry.State,
+			LatestVersion:        entry.LatestVersion,
+			ModPageURL:           entry.ModPageURL,
+			Message:              entry.Message,
+			CompatibilityStatus:  entry.CompatibilityStatus,
+			CompatibilitySummary: entry.CompatibilitySummary,
 		}
 	}
 	PropagateNexusUpdateStatus(list)
+}
+
+// ClearUpdateStatusAfterModUpdate resets update metadata for mods updated in place.
+func ClearUpdateStatusAfterModUpdate(list []Mod, folderPaths []string) {
+	if len(folderPaths) == 0 {
+		return
+	}
+	targetFolders := map[string]bool{}
+	for _, fp := range folderPaths {
+		targetFolders[filepath.ToSlash(strings.TrimSpace(fp))] = true
+	}
+	nexusIDs := map[int]bool{}
+	for _, m := range list {
+		if !targetFolders[m.FolderPath] {
+			continue
+		}
+		if id := NexusModIDFromUpdateKeys(m.Manifest.UpdateKeys); id > 0 {
+			nexusIDs[id] = true
+		}
+		if m.BundleNexusID > 0 {
+			nexusIDs[m.BundleNexusID] = true
+		}
+	}
+	clearStatus := func(m *Mod) {
+		m.UpdateStatus = UpdateStatus{State: "current"}
+	}
+	for i := range list {
+		m := &list[i]
+		if targetFolders[m.FolderPath] {
+			clearStatus(m)
+			continue
+		}
+		id := NexusModIDFromUpdateKeys(m.Manifest.UpdateKeys)
+		if id == 0 {
+			id = m.BundleNexusID
+		}
+		if id > 0 && nexusIDs[id] {
+			clearStatus(m)
+		}
+	}
+	for i := range list {
+		if len(list[i].BundleChildren) == 0 {
+			continue
+		}
+		for j := range list[i].BundleChildren {
+			if targetFolders[list[i].BundleChildren[j].FolderPath] {
+				clearStatus(&list[i].BundleChildren[j])
+			}
+		}
+		list[i].UpdateStatus = mergeBundleUpdateStatus(list[i].BundleChildren)
+	}
 }

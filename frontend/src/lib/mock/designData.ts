@@ -545,6 +545,9 @@ export function getMockRefreshData(search: string, hideDisabled: string) {
       m.updateStatus?.state === "update",
   ).length;
   const dependencyIssueCount = countModsWithDependencyIssues(mods);
+  const incompatibleCount = mods.filter(
+    (m) => m.updateStatus?.state === "incompatible",
+  ).length;
 
   return {
     mods: filtered,
@@ -554,6 +557,7 @@ export function getMockRefreshData(search: string, hideDisabled: string) {
     smapiVersion: "4.0.0",
     readyCount,
     dependencyIssueCount,
+    incompatibleCount,
     unmanagedMods: [],
     duplicateMods: [],
   };

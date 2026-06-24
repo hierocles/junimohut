@@ -18,8 +18,11 @@
     gridUpdatesFilterEmptyHint,
     gridDependencyFilterEmptyTitle,
     gridDependencyFilterEmptyHint,
+    gridIncompatibleFilterEmptyTitle,
+    gridIncompatibleFilterEmptyHint,
     gridUpdatesFilterLabel,
     gridDependencyFilterLabel,
+    gridIncompatibleFilterLabel,
     gridTagsLearnEmphasis,
     gridTagsLearnHint,
     tagsCellAddLabel,
@@ -34,6 +37,7 @@
     gridQuickStartLabel,
     gridUpdatesFilterMeta,
     gridDependencyFilterMeta,
+    gridIncompatibleFilterMeta,
     gridTagsFilteringMeta,
     gridTagsFilteringBadge,
     gridBulkSelectedLabel,
@@ -537,13 +541,19 @@
             hint: gridDependencyFilterEmptyHint(),
             tip: undefined as string | undefined,
           }
-        : tagFilterActive && mods.length > 0
+        : gridStatusFilter === "incompatible" && mods.length > 0
           ? {
-              title: gridTagsFilterEmptyTitle,
-              hint: gridTagsFilterEmptyHint,
+              title: gridIncompatibleFilterEmptyTitle(),
+              hint: gridIncompatibleFilterEmptyHint(),
               tip: undefined as string | undefined,
             }
-          : emptyLibraryState(searchQuery),
+          : tagFilterActive && mods.length > 0
+            ? {
+                title: gridTagsFilterEmptyTitle,
+                hint: gridTagsFilterEmptyHint,
+                tip: undefined as string | undefined,
+              }
+            : emptyLibraryState(searchQuery),
   );
 
   $effect(() => {
@@ -582,7 +592,10 @@
     }
   }
 
-  function statusInfo(mod: Mod, row: GridDisplayRow): {
+  function statusInfo(
+    mod: Mod,
+    row: GridDisplayRow,
+  ): {
     text: string;
     badge: string | null;
     title?: string;
@@ -595,7 +608,17 @@
   }
 
   function stripUpdateStatus(mod: Mod): Mod {
-    return { ...mod, updateStatus: {} };
+    return {
+      ...mod,
+      updateStatus: {
+        state: "current",
+        latestVersion: "",
+        modPageUrl: "",
+        message: "",
+        compatibilityStatus: "",
+        compatibilitySummary: "",
+      },
+    };
   }
 
   function versionDisplay(mod: Mod): { text: string; class: string } {
@@ -1033,6 +1056,22 @@
         {gridDependencyFilterLabel(sortedMods.length)}
       </span>
       <span class="type-meta">{gridDependencyFilterMeta}</span>
+      {#if onClearGridStatusFilter}
+        <button
+          type="button"
+          class="anchor text-surface-400 ml-auto"
+          onclick={onClearGridStatusFilter}
+        >
+          {gridClearFilter}
+        </button>
+      {/if}
+    </div>
+  {:else if gridStatusFilter === "incompatible"}
+    <div class="mod-grid-chrome-bar mod-grid-chrome-bar--status" role="status">
+      <span class="state-badge state-badge--error">
+        {gridIncompatibleFilterLabel(sortedMods.length)}
+      </span>
+      <span class="type-meta">{gridIncompatibleFilterMeta}</span>
       {#if onClearGridStatusFilter}
         <button
           type="button"

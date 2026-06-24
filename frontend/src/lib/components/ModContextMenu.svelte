@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Mod } from "$lib/api/client";
+  import { resolvedNexusModId } from "$lib/mods/resolveNexus";
   import {
     contextMenuReinstallSavedLabel,
     modRenameLabel,
@@ -36,18 +37,14 @@
   let menuEl = $state<HTMLDivElement | undefined>();
 
   const hasSavedDownload = $derived(!!mod?.savedDownloadPath?.trim());
-  const hasNexus = $derived(
-    mod?.manifest?.UpdateKeys?.some((k: string) => k.startsWith("Nexus:")) ??
-      false,
-  );
+  const hasNexus = $derived(mod != null && resolvedNexusModId(mod) > 0);
   const hasUpdate = $derived(
     !suppressUpdateActions &&
       (mod?.updateStatus?.state === "update" ||
         mod?.updateStatus?.state === "update_available"),
   );
   const updateIgnored = $derived(
-    !suppressUpdateActions &&
-      mod?.updateStatus?.state === "update_ignored",
+    !suppressUpdateActions && mod?.updateStatus?.state === "update_ignored",
   );
 
   const menuPos = $derived({
