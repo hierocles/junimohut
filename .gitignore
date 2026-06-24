@@ -7,6 +7,7 @@ bin
 build
 .task/
 *.exe
+*.af
 
 # misc
 tmp/
