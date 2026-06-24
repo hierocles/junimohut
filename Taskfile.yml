@@ -33,6 +33,11 @@ tasks:
     cmds:
       - wails3 dev -config ./build/config.yml -port {{.VITE_PORT}}
 
+  icons:
+    summary: Regenerate UI and platform app icons from assets/icon.svg
+    cmds:
+      - node scripts/derive-brand-icons.mjs
+
   setup:docker:
     summary: Builds Docker image for cross-compilation (~800MB download)
     cmds:

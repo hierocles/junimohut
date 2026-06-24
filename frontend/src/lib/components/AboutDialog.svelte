@@ -97,6 +97,11 @@
     gap: var(--space-3);
   }
 
+  .about-dialog-brand :global(.brand-mark svg) {
+    width: 2rem;
+    height: 2rem;
+  }
+
   .about-dialog-actions {
     padding-top: var(--space-2);
   }
