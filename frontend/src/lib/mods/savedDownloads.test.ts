@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Mod } from "$lib/api/client";
 import { resolveArchiveMod } from "$lib/mods/savedDownloads";
-import { downloadUnknownModLabel } from "$lib/copy";
+import * as m from "$lib/paraglide/messages.js";
 
 describe("resolveArchiveMod", () => {
   const installed: Mod = {
@@ -68,9 +68,9 @@ describe("resolveArchiveMod", () => {
 
   it("returns unknown when no metadata is available", () => {
     const resolved = resolveArchiveMod(
-      { archivePath: "C:/downloads/mod.zip", downloadedAt: 1 },
+      { archivePath: "", downloadedAt: 1 },
       [],
     );
-    expect(resolved.displayName).toBe(downloadUnknownModLabel);
+    expect(resolved.displayName).toBe(m.download_unknown_mod_label());
   });
 });

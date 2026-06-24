@@ -163,10 +163,6 @@ export function GetSettings(): $CancellablePromise<config$0.Settings> {
     return $Call.ByID(2554697378);
 }
 
-export function GetTranslations(locale: string): $CancellablePromise<{ [_ in string]?: string } | null> {
-    return $Call.ByID(3594757519, locale);
-}
-
 export function HandleNXMURL(url: string): $CancellablePromise<string> {
     return $Call.ByID(1544860105, url);
 }

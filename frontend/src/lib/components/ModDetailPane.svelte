@@ -11,6 +11,7 @@
     hasUserCustomName,
     officialModName,
   } from "$lib/mods/names";
+  import * as m from "$lib/paraglide/messages.js";
   import {
     dependenciesMissingSummary,
     dependentsSummary,
@@ -24,26 +25,14 @@
     dependencyOptionalAbsent,
     dependencySearchNexus,
     dependencyVersionTooLow,
-    modClearDisplayName,
     modClearDisplayNameAria,
-    modDisplayNameAria,
-    modDisplayNameLabel,
     modContainsOverwritesLabel,
     modContainsOverwritesTooltip,
-    modOfficialNameLabel,
-    modRenameLabel,
-    detailIgnoreUpdateLabel,
-    detailResumeUpdateLabel,
-    configEditorEditConfig,
-  } from "$lib/copy";
+  } from "$lib/i18n/helpers";
   import { nexusModPageUrl, nexusSearchUrl } from "$lib/mods/dependencies";
   import { resolvedNexusModId } from "$lib/mods/resolveNexus";
   import * as API from "$lib/api";
-  import {
-    modDatasetLoadError,
-    modDatasetLoading,
-    formatUserError,
-  } from "$lib/copy";
+  import { formatUserError } from "$lib/errors/formatUserError";
   import { openExternalUrl } from "$lib/wails/openExternalUrl";
   import {
     bundlePartTypeLabel,
@@ -51,7 +40,6 @@
     isBundleChildMod,
     isBundleMod,
   } from "$lib/mods/bundles";
-  import { detailBundlePartsHeading } from "$lib/copy";
 
   type Tab = "general" | "dependencies" | "dependents" | "update";
 
@@ -218,7 +206,7 @@
         if (cancelled) return;
         datasetPage = {
           status: "error",
-          message: formatUserError(error) || modDatasetLoadError,
+          message: formatUserError(error) || m.mod_dataset_load_error(),
         };
       });
     return () => {
@@ -445,14 +433,14 @@
             >
               <div class="min-w-0">
                 <span class="field-label type-label"
-                  >{modOfficialNameLabel}</span
+                  >{m.mod_official_name_label()}</span
                 >
                 <p class="summary-name type-subhead truncate text-surface-50">
                   {officialModName(mod)}
                 </p>
               </div>
               <div class="min-w-0">
-                <span class="field-label type-label">{modDisplayNameLabel}</span
+                <span class="field-label type-label">{m.mod_display_name_label()}</span
                 >
                 <div class="display-name-row flex min-w-0 items-center gap-1">
                   {#if editingDisplayName}
@@ -463,7 +451,7 @@
                       maxlength="200"
                       disabled={displayNameBusy}
                       placeholder={officialModName(mod)}
-                      aria-label={modDisplayNameAria}
+                      aria-label={m.mod_display_name_aria()}
                       onblur={() => void submitDisplayNameEdit()}
                       onkeydown={(e) => {
                         if (e.key === "Enter") {
@@ -486,8 +474,8 @@
                       <button
                         type="button"
                         class="display-name-action"
-                        title={modRenameLabel}
-                        aria-label={modRenameLabel}
+                        title={m.mod_rename_label()}
+                        aria-label={m.mod_rename_label()}
                         disabled={displayNameBusy}
                         onclick={() => startDisplayNameEdit()}
                       >
@@ -497,7 +485,7 @@
                         <button
                           type="button"
                           class="display-name-action"
-                          title={modClearDisplayName}
+                          title={m.mod_clear_display_name()}
                           aria-label={modClearDisplayNameAria(
                             displayModName(mod),
                           )}
@@ -624,7 +612,7 @@
                     <div class="field-row">
                       <dt>Dataset</dt>
                       <dd class="type-meta text-surface-400">
-                        {modDatasetLoading}
+                        {m.mod_dataset_loading()}
                       </dd>
                     </div>
                   {:else if datasetPage.status === "ready"}
@@ -733,7 +721,7 @@
                             class="btn btn-sm preset-tonal"
                             onclick={() => void oneditconfig(mod)}
                           >
-                            {configEditorEditConfig}
+                            {m.config_editor_edit_config()}
                           </button>
                         {/if}
                       {:else}
@@ -772,7 +760,7 @@
               {#if bundleParent && (bundleParent.bundleChildren?.length ?? 0) > 0}
                 <section class="info-col info-col--wide">
                   <h3 class="col-heading type-label">
-                    {detailBundlePartsHeading}
+                    {m.detail_bundle_parts_heading()}
                   </h3>
                   <ul class="bundle-parts-list">
                     {#each bundleParent.bundleChildren ?? [] as part (part.id)}
@@ -801,7 +789,7 @@
                             class="bundle-part-config btn btn-sm preset-tonal"
                             onclick={() => void oneditconfig(part)}
                           >
-                            {configEditorEditConfig}
+                            {m.config_editor_edit_config()}
                           </button>
                         {/if}
                       </li>
@@ -1032,7 +1020,7 @@
                 style="margin-top: var(--space-2);"
                 onclick={() => void onignoreupdate(mod)}
               >
-                {detailIgnoreUpdateLabel}
+                {m.detail_ignore_update_label()}
               </button>
             {/if}
             {#if canResumeUpdate && onresumeupdate && mod}
@@ -1042,7 +1030,7 @@
                 style="margin-top: var(--space-2);"
                 onclick={() => void onresumeupdate(mod)}
               >
-                {detailResumeUpdateLabel}
+                {m.detail_resume_update_label()}
               </button>
             {/if}
           {/if}

@@ -5,7 +5,7 @@ import {
   resolveDependencies,
   countModsWithDependencyIssues,
 } from "$lib/mods/dependencies";
-import { pathBasename } from "$lib/copy";
+import { pathBasename } from "$lib/paths";
 import { collapseDisplayMods } from "$lib/mods/bundles";
 import type { Profile } from "../../../bindings/junimohut/internal/profiles/models";
 import type { Settings } from "../../../bindings/junimohut/internal/config/models";

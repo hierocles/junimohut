@@ -1,11 +1,6 @@
 <script lang="ts">
-  import BrandMark from '$lib/components/BrandMark.svelte';
-  import {
-    aboutCloseLabel,
-    aboutDialogDisclaimer,
-    aboutDialogTagline,
-    aboutDialogTitle,
-  } from '$lib/copy';
+  import BrandMark from "$lib/components/BrandMark.svelte";
+  import * as m from "$lib/paraglide/messages.js";
 
   interface Props {
     open: boolean;
@@ -46,14 +41,18 @@
   onclose={handleClose}
   oncancel={onDialogCancel}
 >
-  <div class="about-dialog-panel card app-panel border app-border layout-stack-sm motion-dialog-enter">
+  <div
+    class="about-dialog-panel card app-panel border app-border layout-stack-sm motion-dialog-enter"
+  >
     <div class="about-dialog-brand">
       <BrandMark />
-      <h2 id="about-title" class="type-title text-surface-50 m-0">{aboutDialogTitle}</h2>
+      <h2 id="about-title" class="type-title text-surface-50 m-0">
+        {m.about_dialog_title()}
+      </h2>
     </div>
     <p id="about-desc" class="type-ui type-meta type-prose m-0">
-      {aboutDialogTagline}<br />
-      {aboutDialogDisclaimer}
+      {m.about_dialog_tagline()}<br />
+      {m.about_dialog_disclaimer()}
     </p>
     <div class="about-dialog-actions">
       <button
@@ -62,7 +61,7 @@
         class="btn preset-filled-primary-500 w-full"
         onclick={handleClose}
       >
-        {aboutCloseLabel}
+        {m.about_close_label()}
       </button>
     </div>
   </div>
@@ -83,7 +82,8 @@
   }
 
   .about-dialog[open]::backdrop {
-    animation: motion-backdrop-enter var(--motion-medium) var(--ease-out-quart) both;
+    animation: motion-backdrop-enter var(--motion-medium) var(--ease-out-quart)
+      both;
   }
 
   .about-dialog-panel {

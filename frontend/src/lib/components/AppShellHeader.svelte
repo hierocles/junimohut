@@ -2,7 +2,8 @@
   import type { Snippet } from 'svelte';
   import BrandMark from '$lib/components/BrandMark.svelte';
   import WindowControls from '$lib/components/WindowControls.svelte';
-  import { appVersionLabel, brandWordmark, brandWordmarkTitle } from '$lib/copy';
+  import * as m from '$lib/paraglide/messages.js';
+  import { appVersionLabel } from '$lib/i18n/helpers';
   import { onDragRegionDoubleClick } from '$lib/wails/windowApi';
 
   interface Props {
@@ -26,9 +27,9 @@
           type="button"
           class="brand-wordmark type-title"
           onclick={onTitleClick}
-          title={brandWordmarkTitle}
+          title={m.brand_wordmark_title()}
         >
-          {brandWordmark}
+          {m.brand_wordmark()}
         </button>
       </h1>
       <span class="brand-version-pill type-caption">{appVersionLabel()}</span>

@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
+  import * as m from "$lib/paraglide/messages.js";
 
   interface Props {
     open: boolean;
@@ -21,8 +22,8 @@
     open,
     title,
     message,
-    confirmLabel = "Confirm",
-    cancelLabel = "Cancel",
+    confirmLabel = m.dialog_confirm_label(),
+    cancelLabel = m.dialog_cancel_label(),
     variant = "default",
     busy = false,
     extraLabel,
@@ -108,7 +109,7 @@
           aria-busy={busy}
           onclick={handleExtra}
         >
-          {busy ? "Working…" : extraLabel}
+          {busy ? m.dialog_working_label() : extraLabel}
         </button>
       {/if}
       <button
@@ -120,7 +121,7 @@
         aria-busy={busy}
         onclick={handleConfirm}
       >
-        {busy ? "Working…" : confirmLabel}
+        {busy ? m.dialog_working_label() : confirmLabel}
       </button>
     </div>
   </div>

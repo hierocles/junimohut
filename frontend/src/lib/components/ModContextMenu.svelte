@@ -1,19 +1,7 @@
 <script lang="ts">
   import type { Mod } from "$lib/api/client";
   import { resolvedNexusModId } from "$lib/mods/resolveNexus";
-  import {
-    contextMenuReinstallSavedLabel,
-    modRenameLabel,
-    contextMenuOpenFolder,
-    contextMenuOpenManifest,
-    contextMenuEditConfig,
-    contextMenuViewNexus,
-    contextMenuEndorse,
-    contextMenuDownloadUpdate,
-    contextMenuIgnoreUpdate,
-    contextMenuResumeUpdate,
-    contextMenuDeleteMod,
-  } from "$lib/copy";
+  import * as m from "$lib/paraglide/messages.js";
 
   interface Props {
     mod: Mod | null;
@@ -53,31 +41,31 @@
   });
 
   const menuItems = $derived([
-    { action: "openFolder", label: contextMenuOpenFolder },
-    { action: "openManifest", label: contextMenuOpenManifest },
+    { action: "openFolder", label: m.context_menu_open_folder() },
+    { action: "openManifest", label: m.context_menu_open_manifest() },
     ...(mod?.hasJsonFiles
-      ? [{ action: "editConfig", label: contextMenuEditConfig }]
+      ? [{ action: "editConfig", label: m.context_menu_edit_config() }]
       : []),
-    { action: "rename", label: modRenameLabel },
+    { action: "rename", label: m.mod_rename_label() },
     ...(hasSavedDownload
-      ? [{ action: "reinstallSaved", label: contextMenuReinstallSavedLabel }]
+      ? [{ action: "reinstallSaved", label: m.context_menu_reinstall_saved_label() }]
       : []),
     ...(hasNexus
       ? [
-          { action: "openPage", label: contextMenuViewNexus },
-          { action: "endorse", label: contextMenuEndorse },
+          { action: "openPage", label: m.context_menu_view_nexus() },
+          { action: "endorse", label: m.context_menu_endorse() },
           ...(hasUpdate
-            ? [{ action: "ignoreUpdate", label: contextMenuIgnoreUpdate }]
+            ? [{ action: "ignoreUpdate", label: m.context_menu_ignore_update() }]
             : []),
           ...(updateIgnored
-            ? [{ action: "resumeUpdate", label: contextMenuResumeUpdate }]
+            ? [{ action: "resumeUpdate", label: m.context_menu_resume_update() }]
             : []),
           ...(hasUpdate
-            ? [{ action: "downloadUpdate", label: contextMenuDownloadUpdate }]
+            ? [{ action: "downloadUpdate", label: m.context_menu_download_update() }]
             : []),
         ]
       : []),
-    { action: "delete", label: contextMenuDeleteMod, danger: true },
+    { action: "delete", label: m.context_menu_delete_mod(), danger: true },
   ] as const);
 
   function focusMenuItem(delta: number) {

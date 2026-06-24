@@ -1,6 +1,6 @@
 import type { Mod } from "$lib/api/client";
 
-function nexusIdFromUpdateKeys(keys: string[] | undefined): number {
+function nexusIdFromUpdateKeys(keys: string[] | null | undefined): number {
   for (const key of keys ?? []) {
     if (key.startsWith("Nexus:")) {
       const id = Number.parseInt(key.slice("Nexus:".length), 10);

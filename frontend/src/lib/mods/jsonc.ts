@@ -1,5 +1,5 @@
 import { parse, type ParseError } from "jsonc-parser";
-import { jsoncParseErrorMessage } from "$lib/copy";
+import { jsoncParseErrorMessage } from "$lib/i18n/helpers";
 
 export type JsoncParseState = {
   valid: boolean;

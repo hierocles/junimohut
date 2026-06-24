@@ -1,9 +1,9 @@
 import type { Mod } from "$lib/api/client";
+import * as m from "$lib/paraglide/messages.js";
 import {
   dependencyIssuesTooltip,
   missingDependencyBadge,
-  modNotCheckedLabel,
-} from "$lib/copy";
+} from "$lib/i18n/helpers";
 
 export type ModStatusInfo = {
   text: string;
@@ -15,19 +15,23 @@ export function modStatusInfo(mod: Mod, lastUpdateCheck = 0): ModStatusInfo {
   const state = mod.updateStatus?.state;
   if (state === "update" || state === "update_available") {
     const latest = mod.updateStatus?.latestVersion;
-    const text = latest ? `Update to v${latest}` : "Update on Nexus";
+    const text = latest
+      ? m.status_update_to_version({ version: latest })
+      : m.status_update_on_nexus();
     return { text, badge: "state-badge state-badge--update" };
   }
   if (state === "update_ignored") {
     const latest = mod.updateStatus?.latestVersion;
-    const text = latest ? `v${latest} ignored` : "Update ignored";
+    const text = latest
+      ? m.status_update_ignored_version({ version: latest })
+      : m.status_update_ignored();
     return { text, badge: "state-badge state-badge--muted" };
   }
   if (state === "incompatible") {
     const compat = mod.updateStatus?.compatibilityStatus?.trim();
     const summary = mod.updateStatus?.compatibilitySummary?.trim();
     const msg = mod.updateStatus?.message?.trim();
-    const text = compat || msg || "Incompatible";
+    const text = compat || msg || m.status_incompatible();
     const title = summary || (msg && msg.length > 40 ? msg : undefined);
     return {
       text,
@@ -47,22 +51,27 @@ export function modStatusInfo(mod: Mod, lastUpdateCheck = 0): ModStatusInfo {
 
   if (state === "unofficial") {
     const latest = mod.updateStatus?.latestVersion?.trim();
-    const text = latest ? `Unofficial v${latest}` : "Unofficial";
+    const text = latest
+      ? m.status_unofficial_version({ version: latest })
+      : m.status_unofficial();
     return { text, badge: "state-badge state-badge--muted" };
   }
   if (mod.isCoreMod) {
-    return { text: "Core", badge: "state-badge state-badge--info" };
+    return { text: m.status_core(), badge: "state-badge state-badge--info" };
   }
   if (mod.enabled) {
     if (lastUpdateCheck === 0) {
       return {
-        text: modNotCheckedLabel,
+        text: m.mod_not_checked_label(),
         badge: "state-badge state-badge--muted",
       };
     }
-    return { text: "Up to date", badge: "state-badge state-badge--success" };
+    return {
+      text: m.status_up_to_date(),
+      badge: "state-badge state-badge--success",
+    };
   }
-  return { text: "Disabled", badge: "state-badge state-badge--muted" };
+  return { text: m.status_disabled(), badge: "state-badge state-badge--muted" };
 }
 
 export function modStatusSortKey(mod: Mod): number {

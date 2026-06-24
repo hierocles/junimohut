@@ -1546,31 +1546,3 @@ func (a *App) browseFolder(title string) (string, error) {
 	}
 	return path, nil
 }
-
-// --- i18n ---
-
-func (a *App) GetTranslations(locale string) map[string]string {
-	return defaultTranslations(locale)
-}
-
-func defaultTranslations(locale string) map[string]string {
-	// English defaults; extend with locale files in Phase 5
-	_ = locale
-	return map[string]string{
-		"app.title":          "Junimo Hut",
-		"mods.search":        "Search mods...",
-		"mods.install":       "Install Mod",
-		"mods.checkUpdates":  "Check for Updates",
-		"mods.readyToUpdate": "mods ready to update",
-		"smapi.launch":       "Launch SMAPI",
-		"profiles.new":       "New Profile",
-		"categories.new":     "New Category",
-		"settings.title":     "Settings",
-		"setup.welcome":      "Welcome to Junimo Hut! Point us at your game folder and mod library to get started.",
-		"setup.gamePath":     "Game Path",
-		"setup.smapiPath":    "SMAPI Path",
-		"setup.modsRoot":     "Mod Library",
-		"setup.detect":       "Auto-detect",
-		"setup.complete":     "Get Started",
-	}
-}

@@ -1,4 +1,4 @@
-import { normalizeArchivePaths } from "$lib/copy";
+import { normalizeArchivePaths } from "$lib/paths";
 import { isWailsHost } from "$lib/wails/windowApi";
 
 /** Drop zone ids — must match `data-file-drop-target` element ids in the DOM. */

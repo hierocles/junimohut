@@ -5,7 +5,7 @@
     normalizeVisibleColumns,
     type GridColumnId,
   } from '$lib/mods/gridColumns';
-  import { modGridColumnsRequiredHint, modGridColumnsTitle } from '$lib/copy';
+  import * as m from '$lib/paraglide/messages.js';
 
   interface Props {
     x: number;
@@ -67,10 +67,10 @@
     onclick={(e) => e.stopPropagation()}
     onkeydown={(e) => e.stopPropagation()}
     role="menu"
-    aria-label={modGridColumnsTitle}
+    aria-label={m.mod_grid_columns_title()}
     tabindex="-1"
   >
-    <p class="overlay-menu-title type-caption type-meta">{modGridColumnsTitle}</p>
+    <p class="overlay-menu-title type-caption type-meta">{m.mod_grid_columns_title()}</p>
     {#each GRID_COLUMNS as column (column.id)}
       {@const checked = isColumnVisible(activeColumns, column.id)}
       <button
@@ -90,6 +90,6 @@
         <span class="truncate">{column.label}</span>
       </button>
     {/each}
-    <p class="overlay-menu-hint type-caption type-meta">{modGridColumnsRequiredHint}</p>
+    <p class="overlay-menu-hint type-caption type-meta">{m.mod_grid_columns_required_hint()}</p>
   </div>
 </div>

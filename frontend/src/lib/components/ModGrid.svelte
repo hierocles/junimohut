@@ -11,6 +11,8 @@
     useNativeArchiveFileDrop,
   } from "$lib/wails/archiveFileDrop";
   import TagPicker from "$lib/components/TagPicker.svelte";
+  import * as m from "$lib/paraglide/messages.js";
+  import { appLocale } from "$lib/i18n/locale";
   import {
     emptyLibraryState,
     workspaceOnboardingText,
@@ -23,37 +25,16 @@
     gridUpdatesFilterLabel,
     gridDependencyFilterLabel,
     gridIncompatibleFilterLabel,
-    gridTagsLearnEmphasis,
-    gridTagsLearnHint,
-    tagsCellAddLabel,
     tagsCellEditLabel,
     tagsOverflowLabel,
     gridBulkDeleteLabel,
     modContainsOverwritesLabel,
     modContainsOverwritesTooltip,
-    gridTagsFilterEmptyTitle,
-    gridTagsFilterEmptyHint,
-    gridClearFilter,
-    gridQuickStartLabel,
-    gridUpdatesFilterMeta,
-    gridDependencyFilterMeta,
-    gridIncompatibleFilterMeta,
-    gridTagsFilteringMeta,
     gridTagsFilteringBadge,
     gridBulkSelectedLabel,
-    gridBulkEnableSelected,
-    gridBulkDisableSelected,
-    gridBulkClearSelection,
-    gridBulkShiftHint,
-    gridBulkKeyboardHint,
-    gridSortClearedAnnounce,
-    gridSelectionClearedAnnounce,
     gridBulkDeleteOpeningAnnounce,
-    learnHintDismissLabel,
     gridBundlePartsLabel,
-    gridBundleExpandLabel,
-    gridBundleCollapseLabel,
-  } from "$lib/copy";
+  } from "$lib/i18n/helpers";
   import {
     buildGridDisplayRows,
     bundleFolderLabel,
@@ -156,14 +137,22 @@
     "installed",
     "status",
   ];
-  const SORT_COLUMN_LABELS: Record<SortColumn, string> = {
-    name: "Name",
-    author: "Author",
-    version: "Version",
-    folder: "Folder",
-    installed: "Installed",
-    status: "Status",
-  };
+  function sortColumnLabel(column: SortColumn): string {
+    switch (column) {
+      case "name":
+        return m.sort_column_name();
+      case "author":
+        return m.sort_column_author();
+      case "version":
+        return m.sort_column_version();
+      case "folder":
+        return m.sort_column_folder();
+      case "installed":
+        return m.sort_column_installed();
+      case "status":
+        return m.sort_column_status();
+    }
+  }
 
   const MIN_COL_WIDTHS: Record<ResizableColumn, number> = {
     name: 120,
@@ -314,13 +303,14 @@
   function formatInstallDate(ts: number): { label: string; title: string } {
     if (!ts) return { label: "—", title: "" };
     const date = new Date(ts * 1000);
+    const locale = appLocale();
     return {
-      label: date.toLocaleDateString(undefined, {
+      label: date.toLocaleDateString(locale, {
         month: "short",
         day: "numeric",
         year: "numeric",
       }),
-      title: date.toLocaleString(),
+      title: date.toLocaleString(locale),
     };
   }
 
@@ -420,9 +410,14 @@
 
     if (sortColumn && sortDirection) {
       const dir = sortDirection === "asc" ? "ascending" : "descending";
-      sr.announce(`Sorted by ${SORT_COLUMN_LABELS[sortColumn]}, ${dir}`);
+      sr.announce(
+        m.grid_sorted_announce({
+          column: sortColumnLabel(sortColumn),
+          direction: dir,
+        }),
+      );
     } else {
-      sr.announce(gridSortClearedAnnounce);
+      sr.announce(m.grid_sort_cleared_announce());
     }
   }
 
@@ -549,8 +544,8 @@
             }
           : tagFilterActive && mods.length > 0
             ? {
-                title: gridTagsFilterEmptyTitle,
-                hint: gridTagsFilterEmptyHint,
+                title: m.grid_tags_filter_empty_title(),
+                hint: m.grid_tags_filter_empty_hint(),
                 tip: undefined as string | undefined,
               }
             : emptyLibraryState(searchQuery),
@@ -698,7 +693,9 @@
     expandedBundleIds = next;
     saveExpandedBundleIds(next);
     sr.announce(
-      next.has(mod.id) ? gridBundleExpandLabel : gridBundleCollapseLabel,
+      next.has(mod.id)
+        ? m.grid_bundle_expand_label()
+        : m.grid_bundle_collapse_label(),
     );
   }
 
@@ -759,7 +756,7 @@
 
   function clearBulkSelection() {
     bulkSelected = new Set();
-    sr.announce(gridSelectionClearedAnnounce);
+    sr.announce(m.grid_selection_cleared_announce());
   }
 
   async function bulkEnable(enabled: boolean) {
@@ -771,7 +768,10 @@
       bulkSelected = new Set();
       const n = ids.length;
       sr.announce(
-        `${enabled ? "Enabled" : "Disabled"} ${n === 1 ? "1 mod" : `${n} mods`}`,
+        m.grid_bulk_toggle_announce({
+          action: enabled ? m.bulk_toggle_enabled() : m.bulk_toggle_disabled(),
+          count: m.mod_count({ count: n }),
+        }),
       );
     } finally {
       bulkActionLoading = false;
@@ -964,7 +964,7 @@
   class="mod-grid flex min-h-0 min-w-0 flex-1 flex-col"
   class:mod-grid--drop-target={!useNativeArchiveFileDrop && dropDragOver}
   role="region"
-  aria-label="Mod list. Drop mod archives here to install."
+  aria-label={m.grid_mod_list_aria()}
   ondragenter={onInstallDragEnter}
   ondragover={onInstallDragOver}
   ondragleave={onInstallDragLeave}
@@ -975,7 +975,7 @@
       class="mod-grid-refresh-indicator refresh-sweep-indicator"
       role="status"
       aria-live="polite"
-      aria-label="Refreshing mod list"
+      aria-label={m.grid_refreshing_aria()}
     ></div>
   {/if}
   {#if activeBulkSelection.size >= 1}
@@ -993,7 +993,7 @@
         disabled={bulkActionLoading}
         onclick={() => bulkEnable(true)}
       >
-        {gridBulkEnableSelected}
+        {m.grid_bulk_enable_selected()}
       </button>
       <button
         type="button"
@@ -1001,7 +1001,7 @@
         disabled={bulkActionLoading}
         onclick={() => bulkEnable(false)}
       >
-        {gridBulkDisableSelected}
+        {m.grid_bulk_disable_selected()}
       </button>
       <button
         type="button"
@@ -1019,10 +1019,10 @@
         disabled={bulkActionLoading}
         onclick={clearBulkSelection}
       >
-        {gridBulkClearSelection}
+        {m.grid_bulk_clear_selection()}
       </button>
       {#if activeBulkSelection.size === 1}
-        <span class="type-caption type-meta">{gridBulkShiftHint}</span>
+        <span class="type-caption type-meta">{m.grid_bulk_shift_hint()}</span>
       {/if}
     </div>
   {/if}
@@ -1031,7 +1031,7 @@
       <span class="state-badge state-badge--info">
         {gridTagsFilteringBadge(tagFilterCount)}
       </span>
-      <span class="type-meta">{gridTagsFilteringMeta}</span>
+      <span class="type-meta">{m.grid_tags_filtering_meta()}</span>
     </div>
   {/if}
   {#if gridStatusFilter === "updates"}
@@ -1039,14 +1039,14 @@
       <span class="state-badge state-badge--update">
         {gridUpdatesFilterLabel(sortedMods.length)}
       </span>
-      <span class="type-meta">{gridUpdatesFilterMeta}</span>
+      <span class="type-meta">{m.grid_updates_filter_meta()}</span>
       {#if onClearGridStatusFilter}
         <button
           type="button"
           class="anchor text-surface-400 ml-auto"
           onclick={onClearGridStatusFilter}
         >
-          {gridClearFilter}
+          {m.grid_clear_filter()}
         </button>
       {/if}
     </div>
@@ -1055,14 +1055,14 @@
       <span class="state-badge state-badge--error">
         {gridDependencyFilterLabel(sortedMods.length)}
       </span>
-      <span class="type-meta">{gridDependencyFilterMeta}</span>
+      <span class="type-meta">{m.grid_dependency_filter_meta()}</span>
       {#if onClearGridStatusFilter}
         <button
           type="button"
           class="anchor text-surface-400 ml-auto"
           onclick={onClearGridStatusFilter}
         >
-          {gridClearFilter}
+          {m.grid_clear_filter()}
         </button>
       {/if}
     </div>
@@ -1071,14 +1071,14 @@
       <span class="state-badge state-badge--error">
         {gridIncompatibleFilterLabel(sortedMods.length)}
       </span>
-      <span class="type-meta">{gridIncompatibleFilterMeta}</span>
+      <span class="type-meta">{m.grid_incompatible_filter_meta()}</span>
       {#if onClearGridStatusFilter}
         <button
           type="button"
           class="anchor text-surface-400 ml-auto"
           onclick={onClearGridStatusFilter}
         >
-          {gridClearFilter}
+          {m.grid_clear_filter()}
         </button>
       {/if}
     </div>
@@ -1088,34 +1088,34 @@
       class="mod-grid-chrome-bar mod-grid-chrome-bar--learn mod-grid-chrome-bar--learn-accent"
       role="note"
     >
-      <span class="mod-grid-chrome-bar-label">{gridQuickStartLabel}</span>
+      <span class="mod-grid-chrome-bar-label">{m.grid_quick_start_label()}</span>
       <span class="type-meta text-surface-300">{workspaceOnboardingText()}</span
       >
       <button
         type="button"
         class="anchor text-surface-400 ml-auto"
-        onclick={dismissWorkspaceHint}>Got it</button
+        onclick={dismissWorkspaceHint}>{m.learn_hint_dismiss_label()}</button
       >
     </div>
   {:else if activeLearnHint === "tags"}
     <div
       class="mod-grid-chrome-bar mod-grid-chrome-bar--learn mod-grid-chrome-bar--learn-accent"
     >
-      <span class="mod-grid-chrome-bar-emphasis">{gridTagsLearnEmphasis}</span>
-      <span>{gridTagsLearnHint}</span>
+      <span class="mod-grid-chrome-bar-emphasis">{m.grid_tags_learn_emphasis()}</span>
+      <span>{m.grid_tags_learn_hint()}</span>
       <button
         type="button"
         class="anchor text-surface-400 ml-auto"
-        onclick={dismissTagsHint}>{learnHintDismissLabel}</button
+        onclick={dismissTagsHint}>{m.learn_hint_dismiss_label()}</button
       >
     </div>
   {:else if activeLearnHint === "bulk"}
     <div class="mod-grid-chrome-bar mod-grid-chrome-bar--learn">
-      <span>{gridBulkKeyboardHint}</span>
+      <span>{m.grid_bulk_keyboard_hint()}</span>
       <button
         type="button"
         class="anchor text-surface-400 ml-auto"
-        onclick={dismissBulkHint}>{learnHintDismissLabel}</button
+        onclick={dismissBulkHint}>{m.learn_hint_dismiss_label()}</button
       >
     </div>
   {/if}
@@ -1124,13 +1124,13 @@
     bind:this={scrollEl}
     class="min-h-0 flex-1 overflow-auto"
     role="region"
-    aria-label="Mod list scroll area"
+    aria-label={m.grid_scroll_aria()}
   >
     <table
       class="mod-table table w-full type-ui"
       class:is-resizing={isResizing}
       role="grid"
-      aria-label="Mod list"
+      aria-label={m.grid_list_aria()}
       aria-keyshortcuts="ArrowUp ArrowDown Home End Space Enter Escape"
       onkeydown={onGridKeydown}
     >
@@ -1183,7 +1183,7 @@
                 class="th-sort-btn"
                 onclick={() => toggleSort("name")}
               >
-                <span class="type-label th-label">Name</span>
+                <span class="type-label th-label">{m.sort_column_name()}</span>
                 {#if sortColumn === "name" && sortDirection === "asc"}
                   <ChevronUp
                     size={12}
@@ -1230,7 +1230,7 @@
                 class="th-sort-btn"
                 onclick={() => toggleSort("author")}
               >
-                <span class="type-label th-label">Author</span>
+                <span class="type-label th-label">{m.sort_column_author()}</span>
                 {#if sortColumn === "author" && sortDirection === "asc"}
                   <ChevronUp
                     size={12}
@@ -1266,7 +1266,7 @@
                 class="th-sort-btn"
                 onclick={() => toggleSort("version")}
               >
-                <span class="type-label th-label">Version</span>
+                <span class="type-label th-label">{m.sort_column_version()}</span>
                 {#if sortColumn === "version" && sortDirection === "asc"}
                   <ChevronUp
                     size={12}
@@ -1302,7 +1302,7 @@
                 class="th-sort-btn"
                 onclick={() => toggleSort("folder")}
               >
-                <span class="type-label th-label">Folder</span>
+                <span class="type-label th-label">{m.sort_column_folder()}</span>
                 {#if sortColumn === "folder" && sortDirection === "asc"}
                   <ChevronUp
                     size={12}
@@ -1338,7 +1338,7 @@
                 class="th-sort-btn"
                 onclick={() => toggleSort("installed")}
               >
-                <span class="type-label th-label">Installed</span>
+                <span class="type-label th-label">{m.sort_column_installed()}</span>
                 {#if sortColumn === "installed" && sortDirection === "asc"}
                   <ChevronUp
                     size={12}
@@ -1374,7 +1374,7 @@
                 class="th-sort-btn"
                 onclick={() => toggleSort("status")}
               >
-                <span class="type-label th-label">Status</span>
+                <span class="type-label th-label">{m.sort_column_status()}</span>
                 {#if sortColumn === "status" && sortDirection === "asc"}
                   <ChevronUp
                     size={12}
@@ -1510,8 +1510,8 @@
               class="bundle-toggle"
               aria-expanded={bundleExpanded}
               aria-label={bundleExpanded
-                ? gridBundleCollapseLabel
-                : gridBundleExpandLabel}
+                ? m.grid_bundle_collapse_label()
+                : m.grid_bundle_expand_label()}
               onclick={(e) => toggleBundleExpanded(mod, e)}
             >
               {#if bundleExpanded}
@@ -1562,7 +1562,7 @@
               {#if modCategories.length === 0}
                 <span class="tags-add-pill type-caption">
                   <span class="tags-add-icon" aria-hidden="true">+</span>
-                  {tagsCellAddLabel}
+                  {m.tags_cell_add_label()}
                 </span>
               {:else}
                 {#each tagLayout.visible as cat (cat.id)}
@@ -1645,7 +1645,7 @@
               aria-busy={isDownloading}
               onclick={(e) => downloadUpdate(mod, e)}
             >
-              {isDownloading ? "Downloading…" : "Get update"}
+              {isDownloading ? m.grid_downloading() : m.grid_get_update()}
             </button>
           {/if}
         </div>

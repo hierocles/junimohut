@@ -12,53 +12,15 @@
   } from "$lib/mods/configEditorTree";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import WindowControls from "$lib/components/WindowControls.svelte";
+  import * as m from "$lib/paraglide/messages.js";
+  import { formatUserError } from "$lib/errors/formatUserError";
   import {
-    formatUserError,
-    configEditorConfirmClose,
-    configEditorConfirmSwitchFile,
-    configEditorConfirmSwitchMod,
-    configEditorDiscard,
-    configEditorDiscardConfirmBody,
-    configEditorDiscardConfirmTitle,
-    configEditorInvalidJson,
-    configEditorJsoncHint,
-    configEditorLoadFailed,
     configEditorLoadFailedFor,
-    configEditorLoadingMods,
-    configEditorLoadingFile,
-    configEditorLoadingFileAria,
-    configEditorTitleFallback,
-    configEditorMissingModId,
-    configEditorNoModsWithJson,
-    configEditorModMissing,
-    configEditorNoJsonInMod,
-    configEditorNoFilesMatchSearch,
-    configEditorEmptyLibraryHint,
-    configEditorSelectModHint,
-    configEditorSaveAndSwitch,
-    configEditorOpenExternal,
     configEditorParseError,
     configEditorProfileBanner,
-    configEditorSave,
-    configEditorSaved,
     configEditorSaveFailed,
-    configEditorSaving,
-    configEditorSearchModsPlaceholder,
-    configEditorSearchFilesPlaceholder,
-    configEditorSidebarFilesHeading,
-    configEditorSidebarModsHeading,
-    configEditorSidebarResizeAria,
-    configEditorUnsaved,
-    configEditorUnsavedCloseBody,
-    configEditorUnsavedCloseTitle,
-    configEditorUnsavedFileSwitchBody,
-    configEditorUnsavedFileSwitchTitle,
-    configEditorUnsavedSwitchBody,
-    configEditorUnsavedSwitchTitle,
-    configEditorValidJson,
     configEditorWindowTitle,
-    dialogCancelLabel,
-  } from "$lib/copy";
+  } from "$lib/i18n/helpers";
   import { closeWindow, onDragRegionDoubleClick } from "$lib/wails/windowApi";
 
   type ModConfigView = Awaited<ReturnType<typeof API.GetModConfigFile>>;
@@ -277,7 +239,7 @@
 
   async function loadFile(id: string, relPath: string) {
     if (!id) {
-      loadError = configEditorMissingModId;
+      loadError = m.config_editor_missing_mod_id();
       loadingFile = false;
       view = null;
       return;
@@ -302,7 +264,7 @@
       loadError =
         message.toLowerCase().includes("not found") ||
         message.toLowerCase().includes("no longer")
-          ? configEditorModMissing
+          ? m.config_editor_mod_missing()
           : message || configEditorLoadFailedFor(relPath);
       view = null;
     } finally {
@@ -578,29 +540,29 @@
   } {
     if (action?.kind === "switch-mod") {
       return {
-        title: configEditorUnsavedSwitchTitle,
-        message: configEditorUnsavedSwitchBody,
-        confirmLabel: configEditorConfirmSwitchMod,
+        title: m.config_editor_unsaved_switch_title(),
+        message: m.config_editor_unsaved_switch_body(),
+        confirmLabel: m.config_editor_confirm_switch_mod(),
       };
     }
     if (action?.kind === "switch-file") {
       return {
-        title: configEditorUnsavedFileSwitchTitle,
-        message: configEditorUnsavedFileSwitchBody,
-        confirmLabel: configEditorConfirmSwitchFile,
+        title: m.config_editor_unsaved_file_switch_title(),
+        message: m.config_editor_unsaved_file_switch_body(),
+        confirmLabel: m.config_editor_confirm_switch_file(),
       };
     }
     if (action?.kind === "discard") {
       return {
-        title: configEditorDiscardConfirmTitle,
-        message: configEditorDiscardConfirmBody,
-        confirmLabel: configEditorDiscard,
+        title: m.config_editor_discard_confirm_title(),
+        message: m.config_editor_discard_confirm_body(),
+        confirmLabel: m.config_editor_discard(),
       };
     }
     return {
-      title: configEditorUnsavedCloseTitle,
-      message: configEditorUnsavedCloseBody,
-      confirmLabel: configEditorConfirmClose,
+      title: m.config_editor_unsaved_close_title(),
+      message: m.config_editor_unsaved_close_body(),
+      confirmLabel: m.config_editor_confirm_close(),
     };
   }
 
@@ -641,7 +603,7 @@
           <p class="type-mono type-meta text-surface-400">{view.displayPath}</p>
         {:else}
           <h1 class="type-headline text-surface-50">
-            {configEditorTitleFallback}
+            {m.config_editor_title_fallback()}
           </h1>
         {/if}
       </div>
@@ -667,30 +629,30 @@
         <span class="state-badge state-badge--error">{loadError}</span>
       {:else if loadingFile}
         <span class="state-badge state-badge--muted"
-          >{configEditorLoadingFile}</span
+          >{m.config_editor_loading_file()}</span
         >
       {:else if jsonState.valid}
         <span class="state-badge state-badge--success"
-          >{configEditorValidJson}</span
+          >{m.config_editor_valid_json()}</span
         >
       {:else}
         <span class="state-badge state-badge--error"
-          >{configEditorInvalidJson}</span
+          >{m.config_editor_invalid_json()}</span
         >
       {/if}
       {#if dirty && !loadingFile}
         <span class="state-badge state-badge--warning"
-          >{configEditorUnsaved}</span
+          >{m.config_editor_unsaved()}</span
         >
       {/if}
       {#if saveFlash}
         <span class="state-badge state-badge--success motion-status-in"
-          >{configEditorSaved}</span
+          >{m.config_editor_saved()}</span
         >
       {/if}
       {#if !loadError && !loadingFile}
         <span class="config-editor-jsonc-hint type-caption"
-          >{configEditorJsoncHint}</span
+          >{m.config_editor_jsonc_hint()}</span
         >
       {/if}
     </div>
@@ -700,7 +662,7 @@
       disabled={!modId || loadingFile || !!loadError}
       onclick={() => void openExternal()}
     >
-      {configEditorOpenExternal}
+      {m.config_editor_open_external()}
     </button>
   </div>
 
@@ -716,23 +678,23 @@
     >
       <section class="config-editor-sidebar-section config-editor-sidebar-mods">
         <h2 class="type-label config-editor-sidebar-heading">
-          {configEditorSidebarModsHeading}
+          {m.config_editor_sidebar_mods_heading()}
         </h2>
         <input
           type="search"
           class="input input-sm w-full"
-          placeholder={configEditorSearchModsPlaceholder}
+          placeholder={m.config_editor_search_mods_placeholder()}
           bind:value={modSearch}
         />
         {#if loadingMods}
           <p class="type-ui type-meta config-editor-sidebar-empty">
-            {configEditorLoadingMods}
+            {m.config_editor_loading_mods()}
           </p>
         {:else if filteredMods.length === 0}
           <div class="config-editor-sidebar-empty layout-stack-sm">
-            <p class="type-ui type-meta">{configEditorNoModsWithJson}</p>
+            <p class="type-ui type-meta">{m.config_editor_no_mods_with_json()}</p>
             <p class="type-caption type-meta type-prose">
-              {configEditorEmptyLibraryHint}
+              {m.config_editor_empty_library_hint()}
             </p>
           </div>
         {:else}
@@ -796,26 +758,26 @@
         class="config-editor-sidebar-section config-editor-sidebar-files"
       >
         <h2 class="type-label config-editor-sidebar-heading">
-          {configEditorSidebarFilesHeading}
+          {m.config_editor_sidebar_files_heading()}
         </h2>
         <input
           type="search"
           class="input input-sm w-full"
-          placeholder={configEditorSearchFilesPlaceholder}
+          placeholder={m.config_editor_search_files_placeholder()}
           bind:value={fileSearch}
           disabled={!modId || fileTree.length === 0}
         />
         {#if !modId}
           <p class="type-ui type-meta config-editor-sidebar-empty">
-            {configEditorSelectModHint}
+            {m.config_editor_select_mod_hint()}
           </p>
         {:else if fileTree.length === 0}
           <p class="type-ui type-meta config-editor-sidebar-empty">
-            {configEditorNoJsonInMod}
+            {m.config_editor_no_json_in_mod()}
           </p>
         {:else if filteredFileRows.length === 0}
           <p class="type-ui type-meta config-editor-sidebar-empty">
-            {configEditorNoFilesMatchSearch}
+            {m.config_editor_no_files_match_search()}
           </p>
         {:else}
           <div
@@ -887,7 +849,7 @@
       <button
         type="button"
         class="config-editor-sidebar-resize"
-        aria-label={configEditorSidebarResizeAria}
+        aria-label={m.config_editor_sidebar_resize_aria()}
         onpointerdown={onSidebarWidthPointerDown}
         onpointermove={onSidebarWidthPointerMove}
         onpointerup={onSidebarWidthPointerUp}
@@ -901,7 +863,7 @@
           class="config-editor-loading"
           role="status"
           aria-busy="true"
-          aria-label={configEditorLoadingFileAria}
+          aria-label={m.config_editor_loading_file_aria()}
         >
           <div class="config-editor-loading-skeleton" aria-hidden="true">
             <div class="config-editor-loading-line"></div>
@@ -952,7 +914,7 @@
         disabled={!dirty || saving || loadingFile}
         onclick={() => requestAction({ kind: "discard" })}
       >
-        {configEditorDiscard}
+        {m.config_editor_discard()}
       </button>
       <button
         type="button"
@@ -961,7 +923,7 @@
         aria-busy={saving}
         onclick={() => void saveConfig()}
       >
-        {saving ? configEditorSaving : configEditorSave}
+        {saving ? m.config_editor_saving() : m.config_editor_save()}
       </button>
     </div>
   </footer>
@@ -972,9 +934,9 @@
   title={confirmText.title}
   message={confirmText.message}
   confirmLabel={confirmText.confirmLabel}
-  cancelLabel={dialogCancelLabel}
+  cancelLabel={m.dialog_cancel_label()}
   variant={confirmVariant}
-  extraLabel={showSaveAndSwitch ? configEditorSaveAndSwitch : undefined}
+  extraLabel={showSaveAndSwitch ? m.config_editor_save_and_switch() : undefined}
   extraDisabled={saving}
   onextra={saveAndSwitch}
   busy={confirmBusy}

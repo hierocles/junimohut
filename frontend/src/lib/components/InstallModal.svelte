@@ -8,22 +8,15 @@
   } from "$lib/api/client";
   import { USE_MOCK_DATA } from "$lib/api/client";
   import * as API from "$lib/api/index";
+  import * as m from "$lib/paraglide/messages.js";
+  import { pathBasename } from "$lib/paths";
   import {
-    pathBasename,
     normalizeArchivePaths,
     installCompleteLine,
     installDependencyWarningTitle,
     installDependencyWarningBody,
     installAnywayLabel,
     installSuggestedTagsHint,
-    installDisplayNameLegend,
-    installDisplayNameHint,
-    installDisplayNameOfficial,
-    installDisplayNameFolder,
-    installDisplayNamePreviewLabel,
-    installRowBadgePatch,
-    installRowBadgeBlocked,
-    installAddMoreArchives,
     installNamingDisclosure,
     dependencyNotInstalled,
     dependencyVersionTooLow,
@@ -38,7 +31,7 @@
     installOverwriteExistingModMergeIntro,
     installOverwriteSelectRequiredHint,
     installOverwriteConfirmLabel,
-  } from "$lib/copy";
+  } from "$lib/i18n/helpers";
   import {
     INSTALL_MODAL_DROP_ID,
     pathsFromDataTransfer,
@@ -819,7 +812,7 @@
             >
               <p class="dropzone-title type-ui text-surface-100">
                 {paths.length > 0
-                  ? installAddMoreArchives
+                  ? m.install_add_more_archives()
                   : "Drop mod archives here"}
               </p>
               {#if paths.length === 0}
@@ -860,7 +853,7 @@
               disabled={installing}
               onclick={() => (dropZoneExpanded = true)}
             >
-              {installAddMoreArchives}
+              {m.install_add_more_archives()}
             </button>
           {/if}
         {/if}
@@ -904,12 +897,12 @@
                       {#if blocked}
                         <span
                           class="state-badge state-badge--error type-caption queue-badge"
-                          >{installRowBadgeBlocked}</span
+                          >{m.install_row_badge_blocked()}</span
                         >
                       {:else if preview?.state === "confirm"}
                         <span
                           class="state-badge state-badge--warning type-caption queue-badge"
-                          >{installRowBadgePatch}</span
+                          >{m.install_row_badge_patch()}</span
                         >
                       {/if}
                     </div>
@@ -1082,10 +1075,10 @@
             {#if namingOpen}
               <div class="naming-disclosure-panel layout-stack-sm">
                 <p class="type-caption type-meta type-prose name-display-hint">
-                  {installDisplayNameHint}
+                  {m.install_display_name_hint()}
                 </p>
                 <fieldset class="name-display-mode layout-stack-sm">
-                  <legend class="sr-only">{installDisplayNameLegend}</legend>
+                  <legend class="sr-only">{m.install_display_name_legend()}</legend>
                   <label class="name-display-option">
                     <input
                       type="radio"
@@ -1093,7 +1086,7 @@
                       value="official"
                       disabled={installing || namePreviewBusy}
                     />
-                    <span class="type-ui">{installDisplayNameOfficial}</span>
+                    <span class="type-ui">{m.install_display_name_official()}</span>
                   </label>
                   <label class="name-display-option">
                     <input
@@ -1102,7 +1095,7 @@
                       value="folder"
                       disabled={installing || namePreviewBusy}
                     />
-                    <span class="type-ui">{installDisplayNameFolder}</span>
+                    <span class="type-ui">{m.install_display_name_folder()}</span>
                   </label>
                 </fieldset>
                 {#if namePreviewBusy}
@@ -1110,7 +1103,7 @@
                 {:else if flatNamePreviewMods.length > 0}
                   <div class="name-preview-list" aria-live="polite">
                     <span class="type-caption type-label"
-                      >{installDisplayNamePreviewLabel}</span
+                      >{m.install_display_name_preview_label()}</span
                     >
                     <ul class="name-preview-items" role="list">
                       {#each flatNamePreviewMods as mod (mod.uniqueID + mod.destFolder + mod.archivePath)}

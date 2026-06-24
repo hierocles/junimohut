@@ -1,12 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { Minus, Square, Copy, X } from '@lucide/svelte';
-  import {
-    windowMinimizeLabel,
-    windowMaximizeLabel,
-    windowRestoreLabel,
-    windowCloseLabel,
-  } from '$lib/copy';
+  import * as m from '$lib/paraglide/messages.js';
   import {
     isWailsHost,
     minimiseWindow,
@@ -73,7 +68,7 @@
     <button
       type="button"
       class="window-controls-btn"
-      aria-label={windowMinimizeLabel}
+      aria-label={m.window_minimize_label()}
       onclick={() => void minimiseWindow()}
     >
       <Minus size={14} strokeWidth={2} aria-hidden="true" />
@@ -81,7 +76,7 @@
     <button
       type="button"
       class="window-controls-btn"
-      aria-label={maximised ? windowRestoreLabel : windowMaximizeLabel}
+      aria-label={maximised ? m.window_restore_label() : m.window_maximize_label()}
       onclick={() => void onMaximiseClick()}
     >
       {#if maximised}
@@ -93,7 +88,7 @@
     <button
       type="button"
       class="window-controls-btn window-controls-btn--close"
-      aria-label={windowCloseLabel}
+      aria-label={m.window_close_label()}
       onclick={() => {
         if (onclose) void onclose();
         else void closeWindow();

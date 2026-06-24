@@ -1,5 +1,7 @@
 import type { Mod } from "$lib/api/client";
-import { downloadUnknownModLabel, pathBasename } from "$lib/copy";
+import { appLocale } from "$lib/i18n/locale";
+import * as m from "$lib/paraglide/messages.js";
+import { pathBasename } from "$lib/paths";
 import { nexusModIdFromUpdateKey } from "$lib/mods/nexusTags";
 import type { DownloadRecord } from "../../../bindings/junimohut/internal/nexus/models.js";
 
@@ -41,7 +43,7 @@ export function resolveArchiveMod(
   const fileLabel = archiveFileLabel(record);
   if (fileLabel) return { displayName: fileLabel, mod: null };
 
-  return { displayName: downloadUnknownModLabel, mod: null };
+  return { displayName: m.download_unknown_mod_label(), mod: null };
 }
 
 export function archiveSearchText(
@@ -64,10 +66,11 @@ export function formatDownloadTimestamp(ts: number): {
   title: string;
 } {
   if (!ts) return { label: "—", title: "" };
+  const locale = appLocale();
   const date = new Date(ts * 1000);
-  const title = date.toLocaleString();
+  const title = date.toLocaleString(locale);
   const diffSec = Math.round((date.getTime() - Date.now()) / 1000);
-  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
   const absSec = Math.abs(diffSec);
   if (absSec < 60) return { label: rtf.format(diffSec, "second"), title };
   const diffMin = Math.round(diffSec / 60);
@@ -80,7 +83,7 @@ export function formatDownloadTimestamp(ts: number): {
   if (Math.abs(diffDay) < 14)
     return { label: rtf.format(diffDay, "day"), title };
   return {
-    label: date.toLocaleDateString(undefined, {
+    label: date.toLocaleDateString(locale, {
       month: "short",
       day: "numeric",
       year: "numeric",

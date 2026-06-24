@@ -9,12 +9,8 @@
 <script lang="ts">
   import { ChevronDown } from '@lucide/svelte';
   import { portal } from '$lib/actions/portal';
-  import {
-    dropdownEmptyOptions,
-    dropdownSelectPlaceholder,
-    dropdownTypeaheadIdleHint,
-    dropdownTypeaheadJumpHint,
-  } from '$lib/copy';
+  import * as m from '$lib/paraglide/messages.js';
+  import { dropdownTypeaheadJumpHint } from '$lib/i18n/helpers';
 
   export interface DropdownOption {
     value: string;
@@ -85,7 +81,7 @@
 
   const selectedOption = $derived(options.find((o) => o.value === value));
   const selectedLabel = $derived(selectedOption?.label ?? '');
-  const triggerDisplayLabel = $derived(selectedLabel || dropdownSelectPlaceholder);
+  const triggerDisplayLabel = $derived(selectedLabel || m.dropdown_select_placeholder());
 
   const valueLabelId = $derived(
     labelledById ? `${labelledById}-value` : id ? `${id}-value` : undefined,
@@ -98,7 +94,7 @@
   const accessibleName = $derived.by(() => {
     if (labelledById) return undefined;
     if (ariaLabel && selectedLabel) return `${ariaLabel}, ${selectedLabel}`;
-    if (ariaLabel && !selectedLabel) return `${ariaLabel}, ${dropdownSelectPlaceholder}`;
+    if (ariaLabel && !selectedLabel) return `${ariaLabel}, ${m.dropdown_select_placeholder()}`;
     return selectedLabel || ariaLabel || undefined;
   });
 
@@ -474,11 +470,11 @@
           class="overlay-menu-hint overlay-menu-hint--leading type-caption type-meta"
           role="presentation"
         >
-          {dropdownTypeaheadIdleHint}
+          {m.dropdown_typeahead_idle_hint()}
         </li>
       {/if}
       {#if filteredOptions.length === 0}
-        <li class="dropdown-empty type-caption type-meta" role="presentation">{dropdownEmptyOptions}</li>
+        <li class="dropdown-empty type-caption type-meta" role="presentation">{m.dropdown_empty_options()}</li>
       {:else}
         {#each filteredOptions as opt, i (`${instanceKey}-${opt.value}`)}
           <li role="presentation">

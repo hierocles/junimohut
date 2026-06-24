@@ -2,6 +2,9 @@
 node_modules
 dist
 
+# paraglide generated output
+frontend/src/lib/paraglide/
+
 # build files
 bin
 build

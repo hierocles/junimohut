@@ -223,10 +223,7 @@ export function collapseDisplayMods(mods: Mod[]): Mod[] {
         a.folderPath.localeCompare(b.folderPath),
       );
       const enabledCount = children.filter((child) => child.enabled).length;
-      const bundleChildren = children.map((child) => ({
-        ...child,
-        updateStatus: {},
-      }));
+      const bundleChildren = children.map((child) => ({ ...child }));
       out.push({
         ...children[0],
         id: `${children[0].folderPath || ""}::pack:nexus:${nexusId}`,

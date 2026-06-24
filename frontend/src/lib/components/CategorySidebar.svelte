@@ -1,36 +1,16 @@
 <script lang="ts">
   import { PanelLeftClose, Pencil } from '@lucide/svelte';
   import type { Category } from '$lib/api/client';
+  import * as m from '$lib/paraglide/messages.js';
   import {
     TAG_COLOR_PRESETS,
     tagColorAria,
     tagsDeleteAria,
-    tagsDeleteLabel,
     tagsFilterToggleAria,
     tagsFilterToggleTitle,
     tagsRenameAria,
-    tagsRenameLabel,
-    tagsResizeAria,
-    tagsSidebarAllShown,
-    tagsSidebarAria,
-    tagsSidebarCancel,
-    tagsSidebarColorGroupLabel,
-    tagsSidebarColorLegend,
-    tagsSidebarCreateFirst,
-    tagsSidebarCreateTag,
-    tagsSidebarCreating,
-    tagsSidebarEmptyHint,
-    tagsSidebarEmptyTitle,
     tagsSidebarFilterMeta,
-    tagsSidebarFooterHint,
-    tagsSidebarHideAria,
-    tagsSidebarHideTitle,
-    tagsSidebarNew,
-    tagsSidebarShowAll,
-    tagsSidebarTagNameLabel,
-    tagsSidebarTagNamePlaceholder,
-    tagsSidebarTitle,
-  } from '$lib/copy';
+  } from '$lib/i18n/helpers';
 
   const MIN_WIDTH = 200;
   const MAX_WIDTH = 480;
@@ -164,10 +144,10 @@
 
 <svelte:window onmousemove={onSidebarResizeMove} onmouseup={endSidebarResize} />
 
-<aside id="tags-sidebar" class="tag-sidebar" class:is-resizing={sidebarResize != null} aria-label={tagsSidebarAria}>
+<aside id="tags-sidebar" class="tag-sidebar" class:is-resizing={sidebarResize != null} aria-label={m.tags_sidebar_aria()}>
   <header class="sidebar-header">
     <div class="sidebar-heading">
-      <h2 class="type-section-head">{tagsSidebarTitle}</h2>
+      <h2 class="type-section-head">{m.tags_sidebar_title()}</h2>
       {#if categories.length > 0}
         <div class="sidebar-meta-row">
           {#if filterNarrowed}
@@ -175,10 +155,10 @@
               {tagsSidebarFilterMeta(visibleFilterCount)}
             </span>
             <button type="button" class="sidebar-link-btn type-caption" onclick={() => void onshowall()}>
-              {tagsSidebarShowAll}
+              {m.tags_sidebar_show_all()}
             </button>
           {:else}
-            <span class="sidebar-meta type-caption type-meta">{tagsSidebarAllShown}</span>
+            <span class="sidebar-meta type-caption type-meta">{m.tags_sidebar_all_shown()}</span>
           {/if}
         </div>
       {/if}
@@ -188,8 +168,8 @@
         type="button"
         class="btn btn-sm preset-tonal toolbar-icon-btn shrink-0"
         onclick={onhide}
-        title={tagsSidebarHideTitle}
-        aria-label={tagsSidebarHideAria}
+        title={m.tags_sidebar_hide_title()}
+        aria-label={m.tags_sidebar_hide_aria()}
         aria-controls="tags-sidebar"
         aria-expanded={true}
       >
@@ -202,7 +182,7 @@
         aria-expanded={showForm}
         aria-controls="tag-create-panel"
       >
-        {showForm ? tagsSidebarCancel : tagsSidebarNew}
+        {showForm ? m.tags_sidebar_cancel() : m.tags_sidebar_new()}
       </button>
     </div>
   </header>
@@ -210,12 +190,12 @@
   {#if showForm}
     <form id="tag-create-panel" class="create-panel layout-stack-sm motion-reveal" onsubmit={submitCreate}>
       <label class="label">
-        <span class="label-text">{tagsSidebarTagNameLabel}</span>
+        <span class="label-text">{m.tags_sidebar_tag_name_label()}</span>
         <input
           bind:this={nameInput}
           class="input input-sm w-full min-w-0"
           bind:value={newName}
-          placeholder={tagsSidebarTagNamePlaceholder}
+          placeholder={m.tags_sidebar_tag_name_placeholder()}
           maxlength="80"
           required
           disabled={creating}
@@ -223,8 +203,8 @@
       </label>
 
       <fieldset class="color-fieldset">
-        <legend class="type-label label-text">{tagsSidebarColorLegend}</legend>
-        <div class="color-swatches" role="radiogroup" aria-label={tagsSidebarColorGroupLabel}>
+        <legend class="type-label label-text">{m.tags_sidebar_color_legend()}</legend>
+        <div class="color-swatches" role="radiogroup" aria-label={m.tags_sidebar_color_group_label()}>
           {#each TAG_COLOR_PRESETS as preset (preset.hex)}
             <button
               type="button"
@@ -248,7 +228,7 @@
         disabled={creating || !newName.trim()}
         aria-busy={creating}
       >
-        {creating ? tagsSidebarCreating : tagsSidebarCreateTag}
+        {creating ? m.tags_sidebar_creating() : m.tags_sidebar_create_tag()}
       </button>
     </form>
   {/if}
@@ -256,12 +236,12 @@
   <div class="tag-scroll">
     {#if sortedCategories.length === 0 && !showForm}
       <div class="empty-state layout-stack-sm">
-        <p class="empty-state-title type-ui">{tagsSidebarEmptyTitle}</p>
+        <p class="empty-state-title type-ui">{m.tags_sidebar_empty_title()}</p>
         <p class="empty-state-hint type-caption type-meta type-prose">
-          {tagsSidebarEmptyHint}
+          {m.tags_sidebar_empty_hint()}
         </p>
         <button type="button" class="btn btn-sm preset-tonal w-full" onclick={openCreateForm}>
-          {tagsSidebarCreateFirst}
+          {m.tags_sidebar_create_first()}
         </button>
       </div>
     {:else}
@@ -295,7 +275,7 @@
                   bind:value={editingName}
                   maxlength="80"
                   disabled={renameBusy}
-                  aria-label={tagsRenameLabel}
+                  aria-label={m.tags_rename_label()}
                   onblur={() => submitRename(cat.id)}
                   onkeydown={(e) => {
                     if (e.key === 'Enter') { e.preventDefault(); void submitRename(cat.id); }
@@ -313,7 +293,7 @@
                 <button
                   type="button"
                   class="tag-action-btn"
-                  title={tagsRenameLabel}
+                  title={m.tags_rename_label()}
                   aria-label={tagsRenameAria(cat.name)}
                   onclick={() => startRename(cat)}
                 >
@@ -323,7 +303,7 @@
               <button
                 type="button"
                 class="delete-x"
-                title={tagsDeleteLabel}
+                title={m.tags_delete_label()}
                 aria-label={tagsDeleteAria(cat.name)}
                 onclick={() => ondelete(cat.id)}
               >
@@ -338,14 +318,14 @@
 
   {#if showFooterHint}
     <footer class="sidebar-footer type-caption type-meta type-prose">
-      {tagsSidebarFooterHint}
+      {m.tags_sidebar_footer_hint()}
     </footer>
   {/if}
 
   <button
     type="button"
     class="sidebar-resize-handle"
-    aria-label={tagsResizeAria}
+    aria-label={m.tags_resize_aria()}
     onmousedown={startSidebarResize}
   ></button>
 </aside>

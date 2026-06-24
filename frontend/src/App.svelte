@@ -22,10 +22,10 @@
     type UnmanagedMod,
     type DuplicateModGroup,
   } from "$lib/api/client";
-  import { loadTranslations } from "$lib/i18n";
+  import { formatUserError } from "$lib/errors/formatUserError";
+  import { initLocale, applyLocale } from "$lib/i18n";
+  import * as m from "$lib/paraglide/messages.js";
   import {
-    formatUserError,
-    modCount,
     installCompleteLine,
     normalizeArchivePaths,
     consumeLibraryMilestone,
@@ -45,67 +45,31 @@
     unmanagedModsOpenFolderLabel,
     unmanagedModsDismissLabel,
     updatesFilterFooterMessage,
-    statusDismissLabel,
-    toolbarProfileAria,
     tagsSidebarShowTitle,
     tagsSidebarShowAria,
-    reinstallSavedConfirmTitle,
-    reinstallSavedConfirmLabel,
     reinstallSavedConfirmMessage,
-    reinstallSavedDeleteOldLabel,
-    reinstallSavedMissingError,
     reinstallSavedSuccessLine,
-    downloadingModFromNexus,
-    downloadNoArchivePath,
-    downloadCompleteReview,
-    deleteDownloadConfirmTitle,
     deleteDownloadConfirmMessage,
     deletedDownloadMessage,
-    launchingSmapi,
-    checkingModUpdates,
     bulkToggleStatus,
     updatedModMessage,
     tagsAppliedMessage,
-    modEndorsedOnNexus,
-    modUpdateIgnoredMessage,
-    modUpdateResumedMessage,
-    noNexusUpdateKey,
     downloadingUpdateForMessage,
     updateDownloadedForMessage,
     createdTagMessage,
     deletedModMessage,
-    deleteModConfirmTitle,
     deleteModConfirmMessage,
-    deleteModConfirmLabel,
-    deleteModsBatchConfirmTitle,
     deleteModsBatchConfirmMessage,
-    deleteModsBatchConfirmLabel,
     deleteBundleConfirmMessage,
-    deleteModDeleteArchiveLabel,
     deleteModDeleteArchiveHint,
-    deleteModDeleteArchiveNoneHint,
     deletedModsMessage,
     deletedTagMessage,
     deletedProfileMessage,
     renamedTagMessage,
     renamedModMessage,
     clearedModDisplayNameMessage,
-    tagAddedToMod,
-    tagRemovedFromMod,
-    nexusKeyRequired,
-    nexusConnectedMessage,
-    nexusKeyRejected,
-    registerNxmSuccess,
-    smapiInstallerOpened,
-    filterCleared,
-    searchModsPlaceholder,
-    searchModsAria,
-    downloadsLoadError,
-    downloadsBulkReinstallConfirmTitle,
     downloadsBulkReinstallConfirmMessage,
-    configEditorUnsavedProfileTitle,
-    configEditorUnsavedProfileBody,
-  } from "$lib/copy";
+  } from "$lib/i18n/helpers";
   import {
     parseNxmModId,
     nexusModIdFromUpdateKey,
@@ -408,21 +372,21 @@
     if (!pendingConfirm) return "";
     switch (pendingConfirm.kind) {
       case "delete-mod":
-        return deleteModConfirmTitle;
+        return m.delete_mod_confirm_title();
       case "delete-mods-batch":
-        return deleteModsBatchConfirmTitle;
+        return m.delete_mods_batch_confirm_title();
       case "delete-profile":
-        return "Delete profile?";
+        return m.confirm_delete_profile_title();
       case "delete-download":
-        return deleteDownloadConfirmTitle;
+        return m.delete_download_confirm_title();
       case "reinstall-saved-batch":
-        return downloadsBulkReinstallConfirmTitle;
+        return m.downloads_bulk_reinstall_confirm_title();
       case "reinstall-saved":
-        return reinstallSavedConfirmTitle;
+        return m.reinstall_saved_confirm_title();
       case "switch-profile-config":
-        return configEditorUnsavedProfileTitle;
+        return m.config_editor_unsaved_profile_title();
       default:
-        return "Delete tag?";
+        return m.confirm_delete_tag_title();
     }
   });
   const confirmMessage = $derived.by(() => {
@@ -441,9 +405,13 @@
       case "delete-mods-batch":
         return deleteModsBatchConfirmMessage(pendingConfirm.mods.length);
       case "delete-category":
-        return `”${pendingConfirm.name}” will be removed. Installed mods keep their files — only the tag and assignments are deleted.`;
+        return m.confirm_delete_category_message({
+          name: pendingConfirm.name,
+        });
       case "delete-profile":
-        return `”${pendingConfirm.name}” and its mod enable/disable state will be permanently deleted.`;
+        return m.confirm_delete_profile_message({
+          name: pendingConfirm.name,
+        });
       case "delete-download":
         return deleteDownloadConfirmMessage(
           pendingConfirm.displayName,
@@ -459,29 +427,29 @@
           pendingConfirm.archivePath,
         );
       case "switch-profile-config":
-        return configEditorUnsavedProfileBody;
+        return m.config_editor_unsaved_profile_body();
       default:
         return "";
     }
   });
   const confirmActionLabel = $derived.by(() => {
-    if (!pendingConfirm) return "Confirm";
+    if (!pendingConfirm) return m.dialog_confirm_label();
     switch (pendingConfirm.kind) {
       case "delete-mod":
-        return deleteModConfirmLabel;
+        return m.delete_mod_confirm_label();
       case "delete-mods-batch":
-        return deleteModsBatchConfirmLabel;
+        return m.delete_mods_batch_confirm_label();
       case "delete-profile":
-        return "Delete profile";
+        return m.confirm_delete_profile_label();
       case "delete-download":
-        return "Delete archive";
+        return m.confirm_delete_archive_label();
       case "reinstall-saved-batch":
       case "reinstall-saved":
-        return reinstallSavedConfirmLabel;
+        return m.reinstall_saved_confirm_label();
       case "switch-profile-config":
-        return "Switch profile";
+        return m.confirm_switch_profile_label();
       default:
-        return "Delete tag";
+        return m.confirm_delete_tag_label();
     }
   });
   const confirmVariant = $derived(
@@ -590,6 +558,9 @@
       profiles = core.profiles;
       categories = core.categories;
       settings = core.settings;
+      if (settings?.language) {
+        initLocale(settings.language);
+      }
       smapiVersion = core.smapiVersion;
       applyDocumentTheme(settings?.theme ?? "stardew-dark");
       lastLoadKey = `${search}\0${filter}`;
@@ -623,7 +594,6 @@
   }
 
   onMount(() => {
-    loadTranslations("en");
     void refreshNexusConnection();
     void checkSMAPIUpdate();
     Events.On("mods-changed", () => {
@@ -748,7 +718,7 @@
       if (seq !== downloadsFetchSeq) return;
 
       if (failed) {
-        downloadsFetchError = downloadsLoadError;
+        downloadsFetchError = m.downloads_load_error();
       } else {
         downloadsEverLoaded = true;
         downloadsFetchError = "";
@@ -837,20 +807,20 @@
           ) ?? null)
         : null;
     try {
-      setStatus(downloadingModFromNexus, "default", { progress: true });
+      setStatus(m.downloading_mod_from_nexus(), "default", { progress: true });
       startDownloadPolling();
       const rpcPath = await API.HandleNXMURL(url);
       const path = await resolveDownloadedArchivePath(rpcPath);
       if (!openNexusInstallModal(path, modIds, targetMod)) {
-        setError(downloadNoArchivePath);
+        setError(m.download_no_archive_path());
         return;
       }
-      setStatus(downloadCompleteReview, "success");
+      setStatus(m.download_complete_review(), "success");
       await refreshDownloads();
     } catch (e) {
       const path = await resolveDownloadedArchivePath(undefined);
       if (openNexusInstallModal(path, modIds, targetMod)) {
-        setStatus(downloadCompleteReview, "success");
+        setStatus(m.download_complete_review(), "success");
       } else {
         setError(e);
       }
@@ -1001,7 +971,7 @@
   async function launchSMAPI() {
     if (launchBusy) return;
     launchBusy = true;
-    setStatus(launchingSmapi, "default", { progress: true });
+    setStatus(m.launching_smapi(), "default", { progress: true });
     try {
       await API.LaunchSMAPI();
       setStatus(launchSentMessage(), "success");
@@ -1015,7 +985,7 @@
   async function checkUpdates() {
     if (updatesBusy) return;
     updatesBusy = true;
-    setStatus(checkingModUpdates, "default", { progress: true });
+    setStatus(m.checking_mod_updates(), "default", { progress: true });
     try {
       const before = readyCount;
       await API.CheckModUpdates();
@@ -1073,7 +1043,7 @@
   ) {
     const trimmed = archivePath.trim();
     if (!trimmed) {
-      setStatus(reinstallSavedMissingError, "error");
+      setStatus(m.reinstall_saved_missing_error(), "error");
       return;
     }
     if (USE_MOCK_DATA) {
@@ -1215,14 +1185,14 @@
             k.startsWith("Nexus:"),
           );
           if (key) await API.EndorseMod(key, mod.manifest.Version);
-          setStatus(modEndorsedOnNexus, "success");
+          setStatus(m.mod_endorsed_on_nexus(), "success");
           break;
         }
         case "ignoreUpdate":
           await API.SetModUpdateIgnored(bundleUpdateTarget(mods, mod).id, true);
           lastLoadKey = "";
           await load();
-          setStatus(modUpdateIgnoredMessage, "success");
+          setStatus(m.mod_update_ignored_message(), "success");
           break;
         case "resumeUpdate":
           await API.SetModUpdateIgnored(
@@ -1231,7 +1201,7 @@
           );
           lastLoadKey = "";
           await load();
-          setStatus(modUpdateResumedMessage, "success");
+          setStatus(m.mod_update_resumed_message(), "success");
           break;
         case "downloadUpdate": {
           const updateMod = bundleUpdateTarget(mods, mod);
@@ -1239,7 +1209,7 @@
             k.startsWith("Nexus:"),
           );
           if (!key) {
-            setStatus(noNexusUpdateKey, "error");
+            setStatus(m.no_nexus_update_key(), "error");
             break;
           }
           if (nexusDownloadInFlight) break;
@@ -1261,7 +1231,7 @@
             );
             const path = await resolveDownloadedArchivePath(rpcPath);
             if (!openNexusInstallModal(path, modIds, updateMod)) {
-              setError(downloadNoArchivePath);
+              setError(m.download_no_archive_path());
               break;
             }
             setStatus(
@@ -1288,7 +1258,7 @@
         case "reinstallSaved": {
           const archivePath = mod.savedDownloadPath?.trim() ?? "";
           if (!archivePath) {
-            setStatus(reinstallSavedMissingError, "error");
+            setStatus(m.reinstall_saved_missing_error(), "error");
             break;
           }
           if (settings?.alwaysAskDeleteOnUpdate) {
@@ -1468,10 +1438,10 @@
     try {
       if (assign) {
         await API.AssignModToCategory(categoryId, modId);
-        setStatus(tagAddedToMod, "success");
+        setStatus(m.tag_added_to_mod(), "success");
       } else {
         await API.UnassignModFromCategory(categoryId, modId);
-        setStatus(tagRemovedFromMod, "success");
+        setStatus(m.tag_removed_from_mod(), "success");
       }
       await load();
     } catch (e) {
@@ -1482,10 +1452,14 @@
 
   async function saveSettings(s: Settings) {
     try {
+      const prevLanguage = settings?.language;
       await API.SaveSettings(s);
       settings = s;
       if (s.theme) {
         applyDocumentTheme(s.theme);
+      }
+      if (s.language && s.language !== prevLanguage) {
+        applyLocale(s.language);
       }
       if (!settingsOpen) {
         await load();
@@ -1511,20 +1485,20 @@
   async function connectNexus(key: string) {
     const trimmed = key.trim();
     if (!trimmed) {
-      setStatus(nexusKeyRequired, "error");
+      setStatus(m.nexus_key_required(), "error");
       return;
     }
     try {
       await API.SetNexusAPIKey(trimmed);
       nexusConnected = await API.ValidateNexusAPIKey();
       setStatus(
-        nexusConnected ? nexusConnectedMessage : nexusKeyRejected,
+        nexusConnected ? m.nexus_connected_message() : m.nexus_key_rejected(),
         nexusConnected ? "success" : "error",
       );
     } catch (e) {
       nexusConnected = false;
       if (isNexusKeyRejected(e)) {
-        setStatus(nexusKeyRejected, "error");
+        setStatus(m.nexus_key_rejected(), "error");
       } else {
         setError(e);
       }
@@ -1615,7 +1589,7 @@
   async function registerNXMProtocol() {
     try {
       await API.RegisterNXMProtocol();
-      setStatus(registerNxmSuccess, "success");
+      setStatus(m.register_nxm_success(), "success");
     } catch (e) {
       setError(e);
     }
@@ -1642,7 +1616,7 @@
     setStatus(
       gridStatusFilter === "dependencies"
         ? dependencyIssuesFooterMessage(dependencyIssueCount)
-        : filterCleared,
+        : m.filter_cleared(),
       "default",
     );
   }
@@ -1652,7 +1626,7 @@
     setStatus(
       gridStatusFilter === "updates"
         ? updatesFilterFooterMessage(readyCount)
-        : filterCleared,
+        : m.filter_cleared(),
       "default",
     );
   }
@@ -1663,7 +1637,7 @@
     setStatus(
       gridStatusFilter === "incompatible"
         ? incompatibleFilterFooterMessage(incompatibleCount)
-        : filterCleared,
+        : m.filter_cleared(),
       "default",
     );
   }
@@ -1832,7 +1806,7 @@
             <button
               type="button"
               class="footer-status-dismiss"
-              aria-label={statusDismissLabel}
+              aria-label={m.status_dismiss_label()}
               onclick={dismissStatus}
             >
               <X size={12} aria-hidden="true" />
@@ -1907,7 +1881,7 @@
             <DropdownList
               size="sm"
               class="font-medium"
-              ariaLabel={toolbarProfileAria}
+              ariaLabel={m.toolbar_profile_aria()}
               options={profiles.map((p) => ({ value: p.id, label: p.name }))}
               value={activeProfile?.id ?? ""}
               onchange={(id) => switchProfile(id)}
@@ -1927,8 +1901,8 @@
         <div class="toolbar-zone toolbar-zone-center">
           <input
             class="input input-sm toolbar-search-input"
-            placeholder={searchModsPlaceholder}
-            aria-label={searchModsAria}
+            placeholder={m.search_mods_placeholder()}
+            aria-label={m.search_mods_aria()}
             bind:value={search}
           />
         </div>
@@ -2249,7 +2223,7 @@
   oninstallsmapi={async () => {
     try {
       await API.InstallSMAPI();
-      setStatus(smapiInstallerOpened, "success");
+      setStatus(m.smapi_installer_opened(), "success");
     } catch (e) {
       setError(e);
     }
@@ -2316,7 +2290,7 @@
         bind:checked={reinstallDeleteOld}
         disabled={confirmBusy}
       />
-      <span class="type-caption type-meta">{reinstallSavedDeleteOldLabel}</span>
+      <span class="type-caption type-meta">{m.reinstall_saved_delete_old_label()}</span>
     </label>
   {:else if showDeleteArchiveCheckbox}
     <label class="flex items-center gap-2">
@@ -2326,12 +2300,12 @@
         bind:checked={deleteModArchivesToo}
         disabled={confirmBusy || deleteConfirmArchiveCount === 0}
       />
-      <span class="type-caption type-meta">{deleteModDeleteArchiveLabel}</span>
+      <span class="type-caption type-meta">{m.delete_mod_delete_archive_label()}</span>
     </label>
     <span class="type-caption type-meta">
       {deleteConfirmArchiveCount > 0
         ? deleteModDeleteArchiveHint(deleteConfirmArchiveCount)
-        : deleteModDeleteArchiveNoneHint}
+        : m.delete_mod_delete_archive_none_hint()}
     </span>
   {/if}
 </ConfirmDialog>

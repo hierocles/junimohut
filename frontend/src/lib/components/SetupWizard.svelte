@@ -1,7 +1,8 @@
 <script lang="ts">
   import * as API from '$lib/api';
   import type { Settings } from '$lib/api/client';
-  import { formatUserError, settingsBrowseLabel, setupWelcomeTitle, setupWelcomeBody } from '$lib/copy';
+  import * as m from '$lib/paraglide/messages.js';
+  import { formatUserError } from '$lib/errors/formatUserError';
   import setupHeroSvg from '$lib/assets/brand/setup-hero.svg?raw';
   import AppShellHeader from '$lib/components/AppShellHeader.svelte';
 
@@ -79,9 +80,9 @@
       {@html setupHeroSvg}
     </div>
     <header class="layout-stack-sm">
-      <h2 class="type-display text-surface-50">{setupWelcomeTitle}</h2>
+      <h2 class="type-display text-surface-50">{m.setup_welcome_title()}</h2>
       <p class="type-body type-meta type-prose">
-        {setupWelcomeBody}
+        {m.setup_welcome_body()}
       </p>
     </header>
 
@@ -90,7 +91,7 @@
       <div class="field-path-row">
         <input class="input type-mono" bind:value={gamePath} maxlength="512" placeholder="C:\Program Files (x86)\Steam\steamapps\common\Stardew Valley" />
         <button type="button" class="btn preset-tonal field-browse-btn" onclick={() => browsePath('gamePath')} disabled={loading}>
-          {settingsBrowseLabel}
+          {m.settings_browse_label()}
         </button>
       </div>
     </label>
@@ -100,7 +101,7 @@
       <div class="field-path-row">
         <input class="input type-mono" bind:value={smapiPath} maxlength="512" placeholder="StardewModdingAPI.exe inside your game folder" />
         <button type="button" class="btn preset-tonal field-browse-btn" onclick={() => browsePath('smapiPath')} disabled={loading}>
-          {settingsBrowseLabel}
+          {m.settings_browse_label()}
         </button>
       </div>
     </label>
@@ -110,7 +111,7 @@
       <div class="field-path-row">
         <input class="input type-mono" bind:value={modsRoot} maxlength="512" placeholder="AppData\JunimoHut\mod-library" />
         <button type="button" class="btn preset-tonal field-browse-btn" onclick={() => browsePath('modsRoot')} disabled={loading}>
-          {settingsBrowseLabel}
+          {m.settings_browse_label()}
         </button>
       </div>
       <span class="type-caption type-meta">Mod files are stored here. Enabled mods appear as links in {gamePath ? `${gamePath}\\Mods` : 'your game Mods folder'}.</span>

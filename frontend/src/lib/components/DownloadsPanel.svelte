@@ -3,44 +3,18 @@
   import { createAnnouncer } from '@sv-kit/a11y-keys';
   import type { Mod } from '$lib/api/client';
   import type { DownloadEntry } from '../../../bindings/junimohut/internal/nexus/models.js';
+  import * as m from '$lib/paraglide/messages.js';
   import {
-    downloadsActionDelete,
-    downloadsActionInstall,
-    downloadsActionOpenNexus,
-    downloadsActionReinstall,
-    downloadsActionShowFolder,
-    downloadsActiveEmpty,
-    downloadsActiveSectionLabel,
-    downloadsEmptyHistory,
-    downloadsHistorySectionLabel,
-    downloadsLoadError,
-    downloadsLoadRetry,
-    downloadsLoadingAria,
-    downloadsPaneCloseAria,
-    downloadsPaneTitle,
+    downloadsBulkInstallLabel,
+    downloadsBulkReinstallLabel,
+    downloadsModLibraryLine,
+    downloadsNexusIdLine,
     downloadsProgressAria,
-    downloadsRefreshingAria,
-    downloadsResizeAria,
     downloadsRowMoreAriaFor,
     downloadsSearchEmpty,
-    downloadsSearchPlaceholder,
-    downloadsUnlinkedBadge,
-    downloadsUnlinkedHint,
-    downloadsUnlinkedTitle,
-    downloadsViewInLibrary,
-    downloadsRowDetailsHide,
-    downloadsRowDetailsShow,
-    downloadsBulkClearSelection,
-    downloadsBulkInstallLabel,
-    downloadsBulkLearnHint,
-    downloadsBulkReinstallLabel,
-    downloadsBulkRangeHint,
-    downloadsNexusIdLine,
-    downloadsModLibraryLine,
     downloadsSelectionCount,
     downloadsUniqueIdLine,
-    learnHintDismissLabel,
-  } from '$lib/copy';
+  } from '$lib/i18n/helpers';
   import {
     archiveSearchText,
     formatDownloadTimestamp,
@@ -192,11 +166,11 @@
     const row = openMenuRow;
     if (!row) return [];
     const items: RowMenuItem[] = [];
-    items.push({ action: 'folder', label: downloadsActionShowFolder });
+    items.push({ action: 'folder', label: m.downloads_action_show_folder() });
     if ((row.record.nexusModId ?? 0) > 0) {
-      items.push({ action: 'nexus', label: downloadsActionOpenNexus });
+      items.push({ action: 'nexus', label: m.downloads_action_open_nexus() });
     }
-    items.push({ action: 'delete', label: downloadsActionDelete, danger: true });
+    items.push({ action: 'delete', label: m.downloads_action_delete(), danger: true });
     return items;
   });
 
@@ -463,7 +437,7 @@
   id="downloads-pane"
   class="downloads-pane app-panel"
   class:is-resizing={paneResize != null}
-  aria-label={downloadsPaneTitle}
+  aria-label={m.downloads_pane_title()}
   aria-busy={loading}
 >
   {#if refreshing && !loading}
@@ -471,23 +445,23 @@
       class="downloads-refresh-indicator refresh-sweep-indicator"
       role="status"
       aria-live="polite"
-      aria-label={downloadsRefreshingAria}
+      aria-label={m.downloads_refreshing_aria()}
     ></div>
   {/if}
   <button
     type="button"
     class="downloads-pane-resize-handle"
-    aria-label={downloadsResizeAria}
+    aria-label={m.downloads_resize_aria()}
     onmousedown={startPaneResize}
   ></button>
 
   <header class="downloads-pane-header">
-    <h2 class="type-section-head downloads-pane-title">{downloadsPaneTitle}</h2>
+    <h2 class="type-section-head downloads-pane-title">{m.downloads_pane_title()}</h2>
     <button
       type="button"
       class="btn btn-sm preset-tonal toolbar-icon-btn"
       onclick={onclose}
-      aria-label={downloadsPaneCloseAria}
+      aria-label={m.downloads_pane_close_aria()}
     >
       <X size={14} aria-hidden="true" />
     </button>
@@ -496,7 +470,7 @@
   {#if loading}
     <section class="downloads-pane-section" aria-labelledby="downloads-active-heading">
       <h3 id="downloads-active-heading" class="downloads-pane-section-label type-label">
-        {downloadsActiveSectionLabel}
+        {m.downloads_active_section_label()}
       </h3>
       <ul class="downloads-skeleton-list" aria-hidden="true">
         {#each Array(2) as _, i (i)}
@@ -506,13 +480,13 @@
           </li>
         {/each}
       </ul>
-      <p class="sr-only" role="status">{downloadsLoadingAria}</p>
+      <p class="sr-only" role="status">{m.downloads_loading_aria()}</p>
     </section>
 
     <section class="downloads-pane-section downloads-pane-section--history" aria-labelledby="downloads-history-heading">
       <div class="downloads-history-head">
         <h3 id="downloads-history-heading" class="downloads-pane-section-label type-label">
-          {downloadsHistorySectionLabel}
+          {m.downloads_history_section_label()}
         </h3>
         <div class="downloads-skeleton-line downloads-skeleton-line--search" aria-hidden="true"></div>
       </div>
@@ -535,7 +509,7 @@
   {:else}
   <section class="downloads-pane-section" aria-labelledby="downloads-active-heading">
     <h3 id="downloads-active-heading" class="downloads-pane-section-label type-label">
-      {downloadsActiveSectionLabel}
+      {m.downloads_active_section_label()}
     </h3>
     {#if activeItems.length > 0}
       <ul class="downloads-active-list">
@@ -564,38 +538,38 @@
         {/each}
       </ul>
     {:else}
-      <p class="downloads-pane-empty type-ui type-meta type-prose">{downloadsActiveEmpty}</p>
+      <p class="downloads-pane-empty type-ui type-meta type-prose">{m.downloads_active_empty()}</p>
     {/if}
   </section>
 
   <section class="downloads-pane-section downloads-pane-section--history" aria-labelledby="downloads-history-heading">
     <div class="downloads-history-head">
       <h3 id="downloads-history-heading" class="downloads-pane-section-label type-label">
-        {downloadsHistorySectionLabel}
+        {m.downloads_history_section_label()}
       </h3>
       <input
         class="input input-sm downloads-search"
         type="search"
         bind:value={searchQuery}
-        placeholder={downloadsSearchPlaceholder}
-        aria-label={downloadsSearchPlaceholder}
+        placeholder={m.downloads_search_placeholder()}
+        aria-label={m.downloads_search_placeholder()}
         disabled={searchDisabled}
       />
     </div>
 
     {#if fetchError}
       <div class="downloads-fetch-error" role="alert">
-        <p class="downloads-fetch-error-text type-ui type-meta type-prose">{fetchError || downloadsLoadError}</p>
+        <p class="downloads-fetch-error-text type-ui type-meta type-prose">{fetchError || m.downloads_load_error()}</p>
         {#if onretry}
           <button type="button" class="btn btn-sm preset-tonal" onclick={onretry}>
-            {downloadsLoadRetry}
+            {m.downloads_load_retry()}
           </button>
         {/if}
       </div>
     {/if}
 
     {#if savedDownloads.length === 0 && !fetchError}
-      <p class="downloads-pane-empty type-ui type-meta type-prose">{downloadsEmptyHistory}</p>
+      <p class="downloads-pane-empty type-ui type-meta type-prose">{m.downloads_empty_history()}</p>
     {:else if savedDownloads.length > 0 && historyRows.length === 0}
       <p class="downloads-pane-empty type-ui type-meta type-prose">
         {downloadsSearchEmpty(searchQuery.trim())}
@@ -635,19 +609,19 @@
             disabled={bulkActionLoading}
             onclick={clearBulkSelection}
           >
-            {downloadsBulkClearSelection}
+            {m.downloads_bulk_clear_selection()}
           </button>
           {#if activeBulkSelection.size === 1}
             <span class="downloads-bulk-range-hint type-caption type-meta">
-              {downloadsBulkRangeHint}
+              {m.downloads_bulk_range_hint()}
             </span>
           {/if}
         </div>
       {:else if showBulkHint}
         <div class="mod-grid-chrome-bar mod-grid-chrome-bar--learn downloads-bulk-bar">
-          <span>{downloadsBulkLearnHint}</span>
+          <span>{m.downloads_bulk_learn_hint()}</span>
           <button type="button" class="anchor text-surface-400 ml-auto" onclick={dismissBulkHint}>
-            {learnHintDismissLabel}
+            {m.learn_hint_dismiss_label()}
           </button>
         </div>
       {/if}
@@ -685,8 +659,8 @@
                 class="downloads-row-expand btn btn-sm preset-tonal toolbar-icon-btn"
                 class:downloads-row-expand--open={expandedRowPath === row.record.archivePath}
                 aria-label={expandedRowPath === row.record.archivePath
-                  ? downloadsRowDetailsHide
-                  : downloadsRowDetailsShow}
+                  ? m.downloads_row_details_hide()
+                  : m.downloads_row_details_show()}
                 aria-expanded={expandedRowPath === row.record.archivePath}
                 aria-controls={detailId}
                 onclick={() => toggleRowDetails(row.record.archivePath)}
@@ -703,8 +677,8 @@
                   {#if row.unlinked}
                     <span
                       class="state-badge state-badge--info type-caption shrink-0"
-                      title="{downloadsUnlinkedTitle}. {downloadsUnlinkedHint}"
-                    >{downloadsUnlinkedBadge}</span>
+                      title="{m.downloads_unlinked_title()}. {m.downloads_unlinked_hint()}"
+                    >{m.downloads_unlinked_badge()}</span>
                   {/if}
                 </div>
                 <span
@@ -728,7 +702,7 @@
                     class="btn btn-sm preset-filled-primary-500 downloads-primary-btn font-medium"
                     onclick={() => onreinstall(row.mod!, row.record.archivePath)}
                   >
-                    {downloadsActionReinstall}
+                    {m.downloads_action_reinstall()}
                   </button>
                 {:else}
                   <button
@@ -736,7 +710,7 @@
                     class="btn btn-sm preset-filled-primary-500 downloads-primary-btn font-medium"
                     onclick={() => oninstall(row.record.archivePath)}
                   >
-                    {downloadsActionInstall}
+                    {m.downloads_action_install()}
                   </button>
                 {/if}
                 <button
@@ -754,7 +728,7 @@
             {#if expandedRowPath === row.record.archivePath}
               <div id={detailId} class="downloads-row-detail type-caption type-meta">
                 {#if row.unlinked}
-                  <p class="downloads-row-detail-hint type-prose">{downloadsUnlinkedHint}</p>
+                  <p class="downloads-row-detail-hint type-prose">{m.downloads_unlinked_hint()}</p>
                 {/if}
                 {#if libraryLine}
                   <p class="downloads-row-detail-line">{libraryLine}</p>
@@ -774,7 +748,7 @@
                     class="btn btn-sm preset-tonal downloads-view-mod-btn"
                     onclick={() => onviewmod(row.mod!.id)}
                   >
-                    {downloadsViewInLibrary}
+                    {m.downloads_view_in_library()}
                   </button>
                 {/if}
               </div>

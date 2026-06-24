@@ -3,25 +3,12 @@
   import * as API from "$lib/api";
   import { applyDocumentTheme } from "$lib/themes/applyDocumentTheme";
   import type { Settings } from "$lib/api/client";
+  import * as m from "$lib/paraglide/messages.js";
+  import { formatUserError } from "$lib/errors/formatUserError";
   import {
-    formatUserError,
-    settingsSectionPaths,
-    settingsSectionLibrary,
-    settingsSectionAppearance,
-    settingsSectionNexus,
-    settingsBrowseLabel,
-    settingsPathsHint,
-    settingsSavePaths,
-    settingsDone,
-    settingsUnsavedPaths,
-    settingsInstallSmapi,
-    settingsOpeningSmapi,
     settingsHideDisabledOptions,
     themeDropdownOptions,
-    settingsNexusHint,
-    dialogCancelLabel,
-    settingsShowInstallSummary,
-  } from "$lib/copy";
+  } from "$lib/i18n/helpers";
   import DropdownList from "$lib/components/DropdownList.svelte";
 
   interface Props {
@@ -255,10 +242,10 @@
     <div class="settings-drawer-body">
       <section class="settings-section">
         <h3 class="settings-section-title type-section-head">
-          {settingsSectionPaths}
+          {m.settings_section_paths()}
         </h3>
         <p class="settings-section-hint type-caption type-meta type-prose">
-          {settingsPathsHint}
+          {m.settings_paths_hint()}
         </p>
 
         <label class="label">
@@ -275,7 +262,7 @@
               class="btn preset-tonal field-browse-btn"
               onclick={() => browsePath("gamePath")}
             >
-              {settingsBrowseLabel}
+              {m.settings_browse_label()}
             </button>
           </div>
         </label>
@@ -294,7 +281,7 @@
               class="btn preset-tonal field-browse-btn"
               onclick={() => browsePath("smapiPath")}
             >
-              {settingsBrowseLabel}
+              {m.settings_browse_label()}
             </button>
           </div>
           <button
@@ -312,7 +299,7 @@
               }
             }}
           >
-            {smapiBusy ? settingsOpeningSmapi : settingsInstallSmapi}
+            {smapiBusy ? m.settings_opening_smapi() : m.settings_install_smapi()}
           </button>
         </label>
 
@@ -330,7 +317,7 @@
               class="btn preset-tonal field-browse-btn"
               onclick={() => browsePath("modsRoot")}
             >
-              {settingsBrowseLabel}
+              {m.settings_browse_label()}
             </button>
           </div>
         </label>
@@ -338,7 +325,7 @@
 
       <section class="settings-section">
         <h3 class="settings-section-title type-section-head">
-          {settingsSectionLibrary}
+          {m.settings_section_library()}
         </h3>
 
         <label class="field-check-row">
@@ -392,7 +379,7 @@
             bind:checked={draft.showInstallSummary}
             onchange={onAutoFieldChange}
           />
-          <span class="type-ui">{settingsShowInstallSummary}</span>
+          <span class="type-ui">{m.settings_show_install_summary()}</span>
         </label>
 
         <div class="label">
@@ -411,7 +398,7 @@
 
       <section class="settings-section">
         <h3 class="settings-section-title type-section-head">
-          {settingsSectionAppearance}
+          {m.settings_section_appearance()}
         </h3>
         <div class="label">
           <span class="label-text" id="settings-theme-label">Theme</span>
@@ -427,7 +414,7 @@
 
       <section class="settings-section">
         <h3 class="settings-section-title type-section-head">
-          {settingsSectionNexus}
+          {m.settings_section_nexus()}
         </h3>
         {#if nexusConnected}
           <p class="state-badge state-badge--success type-ui w-fit">
@@ -435,7 +422,7 @@
           </p>
         {:else}
           <p class="type-caption type-meta settings-nexus-hint">
-            {settingsNexusHint}
+            {m.settings_nexus_hint()}
           </p>
           <input
             class="input"
@@ -476,7 +463,7 @@
     <div class="settings-drawer-footer app-border">
       {#if pathsDirty}
         <p class="settings-footer-meta type-caption type-meta">
-          {settingsUnsavedPaths}
+          {m.settings_unsaved_paths()}
         </p>
         <div class="settings-footer-actions">
           <button
@@ -486,13 +473,13 @@
             disabled={saving}
             aria-busy={saving}
           >
-            {saving ? "Saving…" : settingsSavePaths}
+            {saving ? "Saving…" : m.settings_save_paths()}
           </button>
           <button
             type="button"
             class="btn preset-tonal"
             onclick={closeDrawer}
-            disabled={saving}>{dialogCancelLabel}</button
+            disabled={saving}>{m.dialog_cancel_label()}</button
           >
         </div>
       {:else}
@@ -500,7 +487,7 @@
           <button
             type="button"
             class="btn preset-filled-primary-500 flex-1"
-            onclick={closeDrawer}>{settingsDone}</button
+            onclick={closeDrawer}>{m.settings_done()}</button
           >
         </div>
       {/if}

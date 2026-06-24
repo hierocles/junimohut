@@ -7,7 +7,7 @@
     duplicateModsCleanupLabel,
     duplicateModsDismissLabel,
     duplicateModsKeepLabel,
-  } from "$lib/copy";
+  } from "$lib/i18n/helpers";
 
   interface Props {
     open: boolean;
