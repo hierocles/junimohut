@@ -120,25 +120,17 @@ func DefaultMergeTargetsFromPreview(preview InstallOverwritePreview) []string {
 	return nil
 }
 
-// ResolveInstallMergeTargets returns merge folders for a patch archive, using explicit
-// UI selections when present and falling back to overwrite preview defaults.
+// ResolveInstallMergeTargets returns merge folders only when the install dialog
+// explicitly selected them. Merges are never applied without user confirmation.
 func ResolveInstallMergeTargets(
 	archivePath string,
 	overwriteTargets map[string][]string,
 	modsRoot string,
 	library []Mod,
 ) ([]string, error) {
-	if targets := LookupOverwriteTargets(overwriteTargets, archivePath); len(targets) > 0 {
-		return targets, nil
-	}
-	previews, err := PreviewInstallOverwrites([]string{archivePath}, modsRoot, library)
-	if err != nil {
-		return nil, err
-	}
-	if len(previews) == 0 {
-		return nil, nil
-	}
-	return DefaultMergeTargetsFromPreview(previews[0]), nil
+	_ = modsRoot
+	_ = library
+	return LookupOverwriteTargets(overwriteTargets, archivePath), nil
 }
 
 func previewInstallOverwriteForArchive(archivePath, modsRoot string, library []Mod) (InstallOverwritePreview, bool, error) {
@@ -176,11 +168,29 @@ func previewManifestArchiveMerge(archivePath, modsRoot string, library []Mod, re
 	if err != nil {
 		return InstallOverwritePreview{}, false, err
 	}
-	if len(incoming) != 1 {
+	if len(incoming) == 0 {
 		return InstallOverwritePreview{}, false, nil
 	}
 
-	installed := libraryModsForManifest(library, incoming[0])
+	var installed []Mod
+	seenFolder := map[string]bool{}
+	for _, manifest := range incoming {
+		matches := libraryModsForManifest(library, manifest)
+		if len(matches) == 0 {
+			scanned, scanErr := FindInstalledModsByUniqueID(modsRoot, manifest.UniqueID)
+			if scanErr != nil {
+				return InstallOverwritePreview{}, false, scanErr
+			}
+			matches = scanned
+		}
+		for _, mod := range matches {
+			if seenFolder[mod.FolderPath] {
+				continue
+			}
+			seenFolder[mod.FolderPath] = true
+			installed = append(installed, mod)
+		}
+	}
 	if len(installed) == 0 {
 		return InstallOverwritePreview{}, false, nil
 	}
@@ -247,6 +257,30 @@ func libraryModsForManifest(library []Mod, manifest Manifest) []Mod {
 		}
 	}
 	return mods
+}
+
+// FindInstalledModsByUniqueID scans the mod library for folders with the given UniqueID.
+func FindInstalledModsByUniqueID(modsRoot, uniqueID string) ([]Mod, error) {
+	if modsRoot == "" || strings.TrimSpace(uniqueID) == "" {
+		return nil, nil
+	}
+	list, err := NewScanner().Scan(ScanOptions{
+		ModsRoot:         modsRoot,
+		SkipPackCollapse: true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	var matches []Mod
+	for _, mod := range list {
+		if UniqueIDsEqual(mod.Manifest.UniqueID, uniqueID) {
+			matches = append(matches, mod)
+		}
+	}
+	sort.Slice(matches, func(i, j int) bool {
+		return matches[i].FolderPath < matches[j].FolderPath
+	})
+	return matches, nil
 }
 
 func installedModCandidates(mods []Mod, totalFiles int) []InstallOverwriteCandidate {

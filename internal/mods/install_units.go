@@ -18,9 +18,18 @@ func resolveInstallUnits(extractRoot string, rootManifests []string) ([]installU
 			disambiguateInstallDestNames(units)
 			return units, nil
 		}
+		srcDir := resolveContainedModDir(wrapper)
+		destName := filepath.Base(wrapper)
+		if srcDir != wrapper {
+			var err error
+			destName, err = installDestNameForModDir(srcDir)
+			if err != nil {
+				return nil, err
+			}
+		}
 		return []installUnit{{
-			srcDir:   wrapper,
-			destName: filepath.Base(wrapper),
+			srcDir:   srcDir,
+			destName: destName,
 		}}, nil
 	}
 
@@ -109,6 +118,59 @@ func singleTopLevelWrapper(extractRoot string) (string, bool) {
 		return "", false
 	}
 	return dirs[0], true
+}
+
+// resolveContainedModDir returns the innermost directory that holds manifest.json
+// when archives use redundant wrapper folders (e.g. ModName/ModName/manifest.json).
+func resolveContainedModDir(dir string) string {
+	current := dir
+	for {
+		if _, err := FindManifestPath(current); err == nil {
+			return current
+		}
+		child, ok := soleSubdirectory(current)
+		if !ok {
+			return current
+		}
+		current = child
+	}
+}
+
+func soleSubdirectory(dir string) (string, bool) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return "", false
+	}
+	var subdir string
+	for _, e := range entries {
+		name := e.Name()
+		if strings.HasPrefix(name, "__MACOSX") || name == ".DS_Store" {
+			continue
+		}
+		if !e.IsDir() {
+			return "", false
+		}
+		if subdir != "" {
+			return "", false
+		}
+		subdir = filepath.Join(dir, name)
+	}
+	if subdir == "" {
+		return "", false
+	}
+	return subdir, true
+}
+
+func installDestNameForModDir(dir string) (string, error) {
+	manifest, err := manifestAtModDir(dir)
+	if err != nil {
+		return filepath.Base(dir), nil
+	}
+	destName := sanitizeFolderName(manifest.Name)
+	if destName == "" {
+		destName = filepath.Base(dir)
+	}
+	return destName, nil
 }
 
 // variantSplitUnits splits a wrapper folder into separate installs when it contains

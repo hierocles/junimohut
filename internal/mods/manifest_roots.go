@@ -1,12 +1,18 @@
 package mods
 
 import (
+	"os"
 	"path/filepath"
 )
 
 // HasManifestInDir reports whether dir contains a manifest.json (case-insensitive).
 func HasManifestInDir(dir string) bool {
 	_, err := FindManifestPath(dir)
+	return err == nil
+}
+
+func hasDirectManifestFile(dir string) bool {
+	_, err := os.Stat(filepath.Join(dir, "manifest.json"))
 	return err == nil
 }
 
@@ -25,7 +31,7 @@ func IsRootModManifest(manifestPath, searchRoot string) bool {
 		if parent == dir || len(dir) < len(searchRoot) {
 			return true
 		}
-		if HasManifestInDir(parent) {
+		if hasDirectManifestFile(parent) {
 			return false
 		}
 		dir = parent

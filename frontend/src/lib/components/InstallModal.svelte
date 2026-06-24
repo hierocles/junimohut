@@ -34,6 +34,10 @@
     installOverwriteMultiTargetHint,
     installOverwriteMatchSummary,
     installOverwriteSamplePathsLabel,
+    installOverwriteExistingModHint,
+    installOverwriteExistingModMergeIntro,
+    installOverwriteSelectRequiredHint,
+    installOverwriteConfirmLabel,
   } from "$lib/copy";
   import {
     INSTALL_MODAL_DROP_ID,
@@ -115,8 +119,16 @@
   let dropZoneExpanded = $state(false);
 
   const isUpdateFlow = $derived(updateTarget != null);
+  const needsMergeConfirmation = $derived(
+    !isUpdateFlow &&
+      overwritePreviews.some((preview) => preview.state === "confirm"),
+  );
   const installActionLabel = $derived(
-    isUpdateFlow && installMode === "replace" ? "Update mod" : "Install",
+    isUpdateFlow && installMode === "replace"
+      ? "Update mod"
+      : needsMergeConfirmation
+        ? installOverwriteConfirmLabel()
+        : "Install",
   );
 
   const sortedCategories = $derived(
@@ -216,14 +228,6 @@
     selectedTagIds = new Set(appliedSuggestedTagIds);
   }
 
-  function defaultOverwriteTarget(preview: InstallOverwritePreview): string {
-    return (
-      preview.suggestedTarget?.trim() ||
-      preview.candidates?.[0]?.folderPath?.trim() ||
-      ""
-    );
-  }
-
   function isMultiTargetPreview(preview: InstallOverwritePreview): boolean {
     const candidates = preview.candidates ?? [];
     if (candidates.length <= 1) return false;
@@ -233,13 +237,23 @@
     return uniqueIds.size > 1;
   }
 
-  function defaultOverwriteTargets(preview: InstallOverwritePreview): string[] {
-    const candidates = preview.candidates ?? [];
-    if (isMultiTargetPreview(preview)) {
-      return candidates.map((c) => c.folderPath?.trim() ?? "").filter(Boolean);
+  function previewHasExistingModMatch(
+    preview: InstallOverwritePreview,
+  ): boolean {
+    return preview.candidates?.some((item) => item.uniqueID) ?? false;
+  }
+
+  function overwriteTargetHint(
+    preview: InstallOverwritePreview,
+    multiTarget: boolean,
+  ): string {
+    if (previewHasExistingModMatch(preview) && !multiTarget) {
+      return installOverwriteExistingModHint();
     }
-    const one = defaultOverwriteTarget(preview);
-    return one ? [one] : [];
+    if (multiTarget) {
+      return installOverwriteMultiTargetHint();
+    }
+    return installOverwriteTargetHint();
   }
 
   function syncOverwriteTargets(previews: InstallOverwritePreview[]) {
@@ -252,10 +266,10 @@
         candidates.map((c) => c.folderPath).filter(Boolean),
       );
       const filtered = current.filter((folderPath) => valid.has(folderPath));
-      if (filtered.length === 0) {
-        next[preview.archivePath] = defaultOverwriteTargets(preview);
-      } else {
+      if (filtered.length > 0) {
         next[preview.archivePath] = filtered;
+      } else {
+        delete next[preview.archivePath];
       }
     }
     for (const path of Object.keys(next)) {
@@ -273,10 +287,8 @@
       const selected = (overwriteTargets[preview.archivePath] ?? [])
         .map((target) => target.trim())
         .filter(Boolean);
-      const merged =
-        selected.length > 0 ? selected : defaultOverwriteTargets(preview);
-      if (merged.length > 0) {
-        targets[preview.archivePath] = merged;
+      if (selected.length > 0) {
+        targets[preview.archivePath] = selected;
       }
     }
     return targets;
@@ -300,7 +312,8 @@
       if (
         overwritePreviews.some(
           (preview) =>
-            preview.state === "confirm" && (preview.candidates?.length ?? 0) > 0,
+            preview.state === "confirm" &&
+            (preview.candidates?.length ?? 0) > 0,
         ) &&
         expandedPath == null &&
         paths.length === 1
@@ -936,7 +949,11 @@
                       <p
                         class="type-caption type-meta type-prose queue-panel-intro"
                       >
-                        {installOverwriteWarningBody(preview.fileCount)}
+                        {previewHasExistingModMatch(preview)
+                          ? installOverwriteExistingModMergeIntro(
+                              preview.candidates?.length ?? 0,
+                            )
+                          : installOverwriteWarningBody(preview.fileCount)}
                       </p>
                       {#if preview.state === "blocked"}
                         <p
@@ -947,17 +964,21 @@
                       {:else if preview.candidates?.length}
                         {@const multiTarget = isMultiTargetPreview(preview)}
                         {@const selectedTargets =
-                          overwriteTargets[preview.archivePath] ??
-                          defaultOverwriteTargets(preview)}
+                          overwriteTargets[preview.archivePath] ?? []}
                         {@const selectedCandidate =
                           preview.candidates.find((item) =>
                             selectedTargets.includes(item.folderPath),
-                          ) ?? preview.candidates[0]}
+                          )}
                         <p class="type-caption type-meta type-prose">
-                          {multiTarget
-                            ? installOverwriteMultiTargetHint()
-                            : installOverwriteTargetHint()}
+                          {overwriteTargetHint(preview, multiTarget)}
                         </p>
+                        {#if selectedTargets.length === 0}
+                          <p
+                            class="type-caption type-prose overwrite-select-required"
+                          >
+                            {installOverwriteSelectRequiredHint()}
+                          </p>
+                        {/if}
                         <span class="type-caption type-label"
                           >{installOverwriteTargetLegend()}</span
                         >
@@ -1715,6 +1736,11 @@
   }
 
   .overwrite-blocked {
+    margin: 0;
+    color: var(--sdvm-warning-fg);
+  }
+
+  .overwrite-select-required {
     margin: 0;
     color: var(--sdvm-warning-fg);
   }

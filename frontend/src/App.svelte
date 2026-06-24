@@ -20,6 +20,7 @@
     type InstallResult,
     type InstallOptions,
     type UnmanagedMod,
+    type DuplicateModGroup,
   } from "$lib/api/client";
   import { loadTranslations } from "$lib/i18n";
   import {
@@ -35,6 +36,8 @@
     dependencyIssuesFooterMessage,
     dependencyIssueCountLabel,
     unmanagedModCountLabel,
+    duplicateModCountLabel,
+    duplicateModsCleanupSuccess,
     unmanagedModsDialogTitle,
     unmanagedModsDialogMessage,
     unmanagedModsOpenFolderLabel,
@@ -140,6 +143,7 @@
   import InstallModal from "$lib/components/InstallModal.svelte";
   import AppShellHeader from "$lib/components/AppShellHeader.svelte";
   import AboutDialog from "$lib/components/AboutDialog.svelte";
+  import DuplicateModsDialog from "$lib/components/DuplicateModsDialog.svelte";
 
   let settings = $state<Settings | null>(null);
   let mods = $state<Mod[]>([]);
@@ -152,6 +156,9 @@
   let unmanagedModCount = $state(0);
   let unmanagedMods = $state<UnmanagedMod[]>([]);
   let unmanagedModsOpen = $state(false);
+  let duplicateMods = $state<DuplicateModGroup[]>([]);
+  let duplicateModsOpen = $state(false);
+  let duplicateCleanupBusy = $state(false);
   let gridStatusFilter = $state<GridStatusFilter>("none");
   let search = $state("");
   let selectedModId = $state<string | null>(null);
@@ -596,6 +603,7 @@
       dependencyIssueCount = stats.dependencyIssueCount;
       unmanagedMods = stats.unmanagedMods;
       unmanagedModCount = unmanagedMods.length;
+      duplicateMods = stats.duplicateMods;
     } catch {
       /* footer counts are non-critical */
     }
@@ -630,10 +638,7 @@
       const payload = ev.data;
       if (!payload?.files?.length) return;
       const targetId = payload.targetId?.trim() ?? "";
-      if (
-        targetId !== INSTALL_MODAL_DROP_ID &&
-        targetId !== MOD_GRID_DROP_ID
-      ) {
+      if (targetId !== INSTALL_MODAL_DROP_ID && targetId !== MOD_GRID_DROP_ID) {
         return;
       }
       queueInstallArchives(payload.files);
@@ -1653,6 +1658,26 @@
     );
   }
 
+  async function cleanupDuplicateMods() {
+    if (duplicateCleanupBusy || duplicateMods.length === 0) return;
+    duplicateCleanupBusy = true;
+    const count = duplicateMods.length;
+    try {
+      for (const group of duplicateMods) {
+        const keep = group.canonical?.trim();
+        if (!keep) continue;
+        await API.CleanupDuplicateModGroup(keep);
+      }
+      duplicateModsOpen = false;
+      setStatus(duplicateModsCleanupSuccess(count), "success");
+      await load();
+    } catch (e) {
+      setError(e);
+    } finally {
+      duplicateCleanupBusy = false;
+    }
+  }
+
   function clearGridStatusFilter() {
     gridStatusFilter = "none";
   }
@@ -1733,6 +1758,17 @@
           >
             <span class="update-badge-count">{unmanagedModCount}</span>
             <span>{unmanagedModCountLabel(unmanagedModCount)}</span>
+          </button>
+        {/if}
+        {#if duplicateMods.length > 0}
+          <button
+            type="button"
+            class="update-badge update-badge--duplicate"
+            onclick={() => (duplicateModsOpen = true)}
+            title="Show duplicate mod folders that can break SMAPI"
+          >
+            <span class="update-badge-count">{duplicateMods.length}</span>
+            <span>{duplicateModCountLabel(duplicateMods.length)}</span>
           </button>
         {/if}
       </div>
@@ -2228,6 +2264,14 @@
   </ul>
 </ConfirmDialog>
 
+<DuplicateModsDialog
+  open={duplicateModsOpen}
+  groups={duplicateMods}
+  busy={duplicateCleanupBusy}
+  oncleanup={cleanupDuplicateMods}
+  onclose={() => (duplicateModsOpen = false)}
+/>
+
 <ConfirmDialog
   open={confirmOpen}
   title={confirmTitle}
@@ -2376,6 +2420,35 @@
   .update-badge--unmanaged .update-badge-count {
     color: var(--color-surface-950);
     background-color: var(--color-warning-400);
+  }
+
+  .update-badge--duplicate {
+    color: var(--color-error-200);
+    background-color: color-mix(
+      in oklab,
+      var(--color-error-500) 14%,
+      var(--color-surface-900)
+    );
+    border-color: color-mix(in oklab, var(--color-error-500) 35%, transparent);
+  }
+
+  .update-badge--duplicate:hover {
+    background-color: color-mix(
+      in oklab,
+      var(--color-error-500) 22%,
+      var(--color-surface-900)
+    );
+  }
+
+  .update-badge--duplicate:focus-visible {
+    outline: 2px solid
+      color-mix(in oklab, var(--color-error-500) 50%, transparent);
+    outline-offset: 2px;
+  }
+
+  .update-badge--duplicate .update-badge-count {
+    color: var(--color-surface-50);
+    background-color: var(--color-error-500);
   }
 
   .unmanaged-mod-list {

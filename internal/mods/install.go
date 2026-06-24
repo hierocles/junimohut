@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"junimohut/internal/archive"
 )
@@ -59,16 +58,15 @@ func (i *Installer) InstallArchive(archivePath string) ([]InstallResult, error) 
 	var results []InstallResult
 	for _, unit := range units {
 		destName := unit.destName
-		dest := filepath.Join(i.ModsRoot, destName)
-		if _, err := os.Stat(dest); err == nil {
-			dest = filepath.Join(i.ModsRoot, destName+"_"+time.Now().Format("20060102_150405"))
+		dest, destRel, resolveErr := resolveInstallDestination(i, unit)
+		if resolveErr != nil {
+			results = append(results, InstallResult{Name: destName, Error: resolveErr.Error()})
+			continue
 		}
 		if err := copyDir(unit.srcDir, dest); err != nil {
 			results = append(results, InstallResult{Name: destName, Error: err.Error()})
 			continue
 		}
-		rel, _ := filepath.Rel(i.ModsRoot, dest)
-		destRel := filepath.ToSlash(rel)
 		unitResults, err := installResultsForDest(i, destRel)
 		if err != nil {
 			results = append(results, InstallResult{Name: destName, Error: err.Error()})
@@ -84,6 +82,104 @@ func (i *Installer) InstallArchive(archivePath string) ([]InstallResult, error) 
 		results = append(results, unitResults...)
 	}
 	return results, nil
+}
+
+func folderInstallCollisionError(destName string) string {
+	return fmt.Sprintf(
+		"A different mod already uses folder %q — choose a merge target in the install dialog or delete the existing folder.",
+		destName,
+	)
+}
+
+func resolveInstallDestination(installer *Installer, unit installUnit) (dest, destRel string, err error) {
+	destName := unit.destName
+	dest = filepath.Join(installer.ModsRoot, destName)
+	_, statErr := os.Stat(dest)
+	if os.IsNotExist(statErr) {
+		if conflicts, conflictErr := findInstalledConflictsForUnit(installer.ModsRoot, unit); conflictErr != nil {
+			return "", "", conflictErr
+		} else if len(conflicts) > 0 {
+			return "", "", fmt.Errorf("%s", existingModMergeRequiredError(conflicts[0].FolderPath))
+		}
+		rel, relErr := filepath.Rel(installer.ModsRoot, dest)
+		if relErr != nil {
+			return "", "", relErr
+		}
+		return dest, filepath.ToSlash(rel), nil
+	}
+	if statErr != nil {
+		return "", "", statErr
+	}
+
+	incoming, incomingErr := manifestAtModDir(unit.srcDir)
+	if incomingErr != nil {
+		return "", "", fmt.Errorf("%s", folderInstallCollisionError(destName))
+	}
+
+	existing, existingErr := manifestAtModDir(dest)
+	if existingErr != nil {
+		return "", "", fmt.Errorf("%s", folderInstallCollisionError(destName))
+	}
+	if !UniqueIDsEqual(incoming.UniqueID, existing.UniqueID) {
+		return "", "", fmt.Errorf("%s", folderInstallCollisionError(destName))
+	}
+
+	return "", "", fmt.Errorf("%s", existingModMergeRequiredError(destName))
+}
+
+func findInstalledConflictsForUnit(modsRoot string, unit installUnit) ([]Mod, error) {
+	manifests, err := rootManifestObjectsAtDir(unit.srcDir)
+	if err != nil {
+		return nil, err
+	}
+	var conflicts []Mod
+	seen := map[string]bool{}
+	for _, manifest := range manifests {
+		matches, err := FindInstalledModsByUniqueID(modsRoot, manifest.UniqueID)
+		if err != nil {
+			return nil, err
+		}
+		for _, mod := range matches {
+			if seen[mod.FolderPath] {
+				continue
+			}
+			seen[mod.FolderPath] = true
+			conflicts = append(conflicts, mod)
+		}
+	}
+	return conflicts, nil
+}
+
+func rootManifestObjectsAtDir(dir string) ([]Manifest, error) {
+	paths, err := findAllManifests(dir)
+	if err != nil {
+		return nil, err
+	}
+	paths = FilterRootManifests(paths, dir)
+	manifests := make([]Manifest, 0, len(paths))
+	for _, path := range paths {
+		manifest, err := ParseManifest(path)
+		if err != nil {
+			return nil, err
+		}
+		manifests = append(manifests, manifest)
+	}
+	return manifests, nil
+}
+
+func existingModMergeRequiredError(destName string) string {
+	return fmt.Sprintf(
+		"Mod already installed at %q — select it as a merge target in the install dialog to update it.",
+		destName,
+	)
+}
+
+func manifestAtModDir(dir string) (Manifest, error) {
+	path, err := FindManifestPath(dir)
+	if err != nil {
+		return Manifest{}, err
+	}
+	return ParseManifest(path)
 }
 
 func findAllManifests(root string) ([]string, error) {

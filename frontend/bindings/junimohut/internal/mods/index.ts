@@ -5,6 +5,7 @@ export type {
     ContentPackFor,
     DeleteModsResult,
     DependencyIssue,
+    DuplicateModGroup,
     InstallDependencyPreview,
     InstallModNamePreview,
     InstallNamePreview,

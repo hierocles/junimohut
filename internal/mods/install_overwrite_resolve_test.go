@@ -20,7 +20,7 @@ func TestLookupOverwriteTargetsNormalizesPaths(t *testing.T) {
 	must.Equal([]string{"GenericModConfigMenu"}, got)
 }
 
-func TestResolveInstallMergeTargetsFallsBackToPreview(t *testing.T) {
+func TestResolveInstallMergeTargetsRequiresExplicitSelection(t *testing.T) {
 	must := require.New(t)
 
 	modsRoot := t.TempDir()
@@ -36,7 +36,13 @@ func TestResolveInstallMergeTargetsFallsBackToPreview(t *testing.T) {
 
 	targets, err := ResolveInstallMergeTargets(archivePath, nil, modsRoot, library)
 	must.NoError(err)
-	must.GreaterOrEqual(len(targets), 2)
+	must.Empty(targets)
+
+	targets, err = ResolveInstallMergeTargets(archivePath, map[string][]string{
+		archivePath: {"GenericModConfigMenu", "EventLookup"},
+	}, modsRoot, library)
+	must.NoError(err)
+	must.Equal([]string{"GenericModConfigMenu", "EventLookup"}, targets)
 }
 
 func writeSimpleModAsset(t *testing.T, modsRoot, folder, assetRel string) error {

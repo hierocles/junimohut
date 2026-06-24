@@ -63,6 +63,10 @@ export function CheckSMAPIUpdate(): $CancellablePromise<smapi$0.UpdateInfo> {
     return $Call.ByID(2834063480);
 }
 
+export function CleanupDuplicateModGroup(keepFolder: string): $CancellablePromise<void> {
+    return $Call.ByID(1438651811, keepFolder);
+}
+
 export function CompleteSetup(gamePath: string, smapiPath: string, modsRoot: string): $CancellablePromise<void> {
     return $Call.ByID(507086583, gamePath, smapiPath, modsRoot);
 }
@@ -105,6 +109,10 @@ export function DetectPaths(): $CancellablePromise<config$0.DetectionResult> {
 
 export function DownloadModUpdate(updateKey: string, modName: string): $CancellablePromise<string> {
     return $Call.ByID(1363034302, updateKey, modName);
+}
+
+export function DuplicateModCount(): $CancellablePromise<number> {
+    return $Call.ByID(626846425);
 }
 
 /**
@@ -178,6 +186,10 @@ export function ListCategories(): $CancellablePromise<categories$0.Category[] | 
 
 export function ListDownloads(): $CancellablePromise<nexus$0.DownloadEntry[] | null> {
     return $Call.ByID(2520899730);
+}
+
+export function ListDuplicateMods(): $CancellablePromise<mods$0.DuplicateModGroup[] | null> {
+    return $Call.ByID(2417720071);
 }
 
 export function ListModJsonFiles(modID: string): $CancellablePromise<mods$0.ModJsonFileNode[] | null> {

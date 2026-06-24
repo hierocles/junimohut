@@ -62,3 +62,17 @@ func TestIsRootModManifestFrameworkExamples(t *testing.T) {
 	must.Len(roots, 1)
 	must.Equal("Framework", filepath.Base(filepath.Dir(roots[0])))
 }
+
+func TestIsRootModManifestWrappedSiblingMods(t *testing.T) {
+	must := require.New(t)
+
+	root := t.TempDir()
+	wrapper := filepath.Join(root, "Portraited Changing Skies - Beta")
+	writeManifest(t, filepath.Join(wrapper, "[CP] Portraited Changing Skies"))
+	writeManifest(t, filepath.Join(wrapper, "[DDF] Portraited Changing Skies"))
+
+	all, err := findAllManifests(root)
+	must.NoError(err)
+	roots := FilterRootManifests(all, root)
+	must.Len(roots, 2)
+}

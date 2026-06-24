@@ -57,6 +57,7 @@ type App struct {
 	refreshMu          sync.Mutex
 	assembleMu         sync.Mutex
 	unmanagedModsCache []profiles.UnmanagedMod
+	duplicateModsCache []mods.DuplicateModGroup
 }
 
 func NewApp() *App {
@@ -252,6 +253,9 @@ func (a *App) refreshMods() error {
 	a.enrichModTimes(list)
 	list = mods.CollapseSiblingPacks(list, settings.ModsRoot, enabled)
 	mods.StripBundleChildUpdateStatus(list)
+	a.mu.Lock()
+	a.duplicateModsCache = mods.DetectDuplicateMods(list)
+	a.mu.Unlock()
 	a.migrateBundleTagAssignments(list)
 	for i := range list {
 		list[i].CategoryIDs = a.categories.ModCategoryIDs(list[i].ID)
@@ -1096,6 +1100,58 @@ func (a *App) UnmanagedModCount() int {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	return len(a.unmanagedModsCache)
+}
+
+func (a *App) ListDuplicateMods() []mods.DuplicateModGroup {
+	if err := a.ensureInit(); err != nil {
+		return nil
+	}
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	out := make([]mods.DuplicateModGroup, len(a.duplicateModsCache))
+	copy(out, a.duplicateModsCache)
+	return out
+}
+
+func (a *App) DuplicateModCount() int {
+	if err := a.ensureInit(); err != nil {
+		return 0
+	}
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return len(a.duplicateModsCache)
+}
+
+func (a *App) CleanupDuplicateModGroup(keepFolder string) error {
+	if err := a.ensureInit(); err != nil {
+		return err
+	}
+	keepFolder = filepath.ToSlash(strings.TrimSpace(keepFolder))
+	if keepFolder == "" {
+		return fmt.Errorf("keep folder is required")
+	}
+
+	a.mu.RLock()
+	group, ok := mods.DuplicateGroupForFolder(a.duplicateModsCache, keepFolder)
+	a.mu.RUnlock()
+	if !ok {
+		return fmt.Errorf("no duplicate mod group found for folder %q", keepFolder)
+	}
+	if group.Canonical != "" {
+		keepFolder = group.Canonical
+	}
+
+	settings := a.store.Get()
+	installer := mods.NewInstaller(settings.ModsRoot)
+	for _, folder := range group.Folders {
+		if folder == keepFolder {
+			continue
+		}
+		if err := installer.DeleteMod(folder); err != nil {
+			return fmt.Errorf("delete %s: %w", folder, err)
+		}
+	}
+	return a.refreshMods()
 }
 
 func (a *App) OpenActiveModsFolder() error {

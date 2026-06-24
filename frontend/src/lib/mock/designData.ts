@@ -555,6 +555,7 @@ export function getMockRefreshData(search: string, hideDisabled: string) {
     readyCount,
     dependencyIssueCount,
     unmanagedMods: [],
+    duplicateMods: [],
   };
 }
 

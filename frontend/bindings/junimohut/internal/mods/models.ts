@@ -35,6 +35,16 @@ export interface DependencyIssue {
 }
 
 /**
+ * DuplicateModGroup describes multiple library folders sharing the same SMAPI UniqueID.
+ */
+export interface DuplicateModGroup {
+    "uniqueID": string;
+    "modName": string;
+    "folders": string[] | null;
+    "canonical": string;
+}
+
+/**
  * InstallDependencyPreview describes dependency warnings for a mod in an install queue.
  */
 export interface InstallDependencyPreview {

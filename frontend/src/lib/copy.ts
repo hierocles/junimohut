@@ -514,6 +514,50 @@ export function unmanagedModsDismissLabel(): string {
   return "Got it";
 }
 
+export function duplicateModCountLabel(count: number): string {
+  return count === 1 ? "1 duplicate mod" : `${count} duplicate mods`;
+}
+
+export function duplicateModsDialogTitle(): string {
+  return "Duplicate mod folders";
+}
+
+export function duplicateModsDialogMessage(): string {
+  return "These mods have multiple copies in your library with the same SMAPI UniqueID. SMAPI skips both, so neither loads. Remove the extra copies and keep the recommended folder for each mod.";
+}
+
+export function duplicateModsCleanupLabel(): string {
+  return "Clean up all";
+}
+
+export function duplicateModsDismissLabel(): string {
+  return "Not now";
+}
+
+export function duplicateModsKeepLabel(): string {
+  return "Keep";
+}
+
+export function duplicateModsCleanupSuccess(count: number): string {
+  return count === 1
+    ? "Removed duplicate mod folder."
+    : `Removed duplicate folders for ${count} mods.`;
+}
+
+export function installOverwriteExistingModHint(): string {
+  return "This mod is already in your library. Select the existing folder below to merge the update into it.";
+}
+
+export function installOverwriteExistingModMergeIntro(count: number): string {
+  return count === 1
+    ? "This archive matches a mod already in your library."
+    : "This archive matches mods already in your library.";
+}
+
+export function installOverwriteSelectRequiredHint(): string {
+  return "Choose a merge target to continue.";
+}
+
 export function dependencyNotInstalled(): string {
   return "Not installed";
 }

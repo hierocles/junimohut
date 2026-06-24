@@ -181,3 +181,104 @@ func TestInstallArchiveCollidingCPVariantNamesWrapped(t *testing.T) {
 	_, err = os.Stat(filepath.Join(root, "Seasonal Open Windows All-in-One"))
 	must.True(os.IsNotExist(err))
 }
+
+func TestInstallArchiveReinstallSameUniqueID(t *testing.T) {
+	must := require.New(t)
+
+	root := t.TempDir()
+	manifest := `{"Name":"Convenient Inventory","Author":"A","Version":"1.0.0","UniqueID":"Author.ConvenientInventory","EntryDll":"Mod.dll"}`
+	modDir := filepath.Join(root, "ConvenientInventory")
+	must.NoError(os.MkdirAll(modDir, 0o755))
+	must.NoError(os.WriteFile(filepath.Join(modDir, "manifest.json"), []byte(manifest), 0o644))
+	must.NoError(os.WriteFile(filepath.Join(modDir, "Mod.dll"), []byte("v1"), 0o644))
+
+	archivePath := filepath.Join(t.TempDir(), "convenient-inventory.zip")
+	writeTestZip(t, archivePath, map[string]string{
+		"ConvenientInventory/manifest.json": manifest,
+		"ConvenientInventory/Mod.dll":        "v2",
+	})
+
+	installer := NewInstaller(root)
+	results, err := installer.InstallArchive(archivePath)
+	must.NoError(err)
+	must.Len(results, 1)
+	must.NotEmpty(results[0].Error)
+	must.Contains(results[0].Error, "merge target")
+
+	entries, err := os.ReadDir(root)
+	must.NoError(err)
+	must.Len(entries, 1)
+
+	data, err := os.ReadFile(filepath.Join(root, "ConvenientInventory", "Mod.dll"))
+	must.NoError(err)
+	must.Equal("v1", string(data))
+}
+
+func TestInstallArchiveFolderCollisionDifferentUniqueID(t *testing.T) {
+	must := require.New(t)
+
+	root := t.TempDir()
+	existing := `{"Name":"Shared Name","Author":"A","Version":"1.0.0","UniqueID":"Author.ExistingMod"}`
+	modDir := filepath.Join(root, "Shared Name")
+	must.NoError(os.MkdirAll(modDir, 0o755))
+	must.NoError(os.WriteFile(filepath.Join(modDir, "manifest.json"), []byte(existing), 0o644))
+
+	incoming := `{"Name":"Shared Name","Author":"B","Version":"1.0.0","UniqueID":"Author.OtherMod"}`
+	archivePath := filepath.Join(t.TempDir(), "other-mod.zip")
+	writeTestZip(t, archivePath, map[string]string{
+		"Shared Name/manifest.json": incoming,
+	})
+
+	installer := NewInstaller(root)
+	results, err := installer.InstallArchive(archivePath)
+	must.NoError(err)
+	must.Len(results, 1)
+	must.NotEmpty(results[0].Error)
+	must.Contains(results[0].Error, "Shared Name")
+
+	entries, err := os.ReadDir(root)
+	must.NoError(err)
+	must.Len(entries, 1)
+}
+
+func TestFindInstalledModsByUniqueID(t *testing.T) {
+	must := require.New(t)
+
+	root := t.TempDir()
+	writeSimpleModWithAsset(t, root, "ConvenientInventory", "Author.ConvenientInventory", "Convenient Inventory", "Mod.dll")
+	writeSimpleModWithAsset(t, root, "ConvenientInventory_20260620_165612", "Author.ConvenientInventory", "Convenient Inventory", "Mod.dll")
+
+	found, err := FindInstalledModsByUniqueID(root, "Author.ConvenientInventory")
+	must.NoError(err)
+	must.Len(found, 2)
+}
+
+func TestInstallArchiveNestedWrapperFolder(t *testing.T) {
+	must := require.New(t)
+
+	root := t.TempDir()
+	manifest := `{"Name":"Fruit Tree Bug Fix","Author":"moonslime","Version":"1.0.0","UniqueID":"moonslime.FruitTreeBugFix","EntryDll":"FruitTreeBugFix.dll"}`
+	archivePath := filepath.Join(t.TempDir(), "fruit-tree-bug-fix.zip")
+	writeTestZip(t, archivePath, map[string]string{
+		"FruitTreeBugFix/FruitTreeBugFix/manifest.json": manifest,
+		"FruitTreeBugFix/FruitTreeBugFix/FruitTreeBugFix.dll": "dll",
+	})
+
+	previews, err := PreviewInstallNames([]string{archivePath})
+	must.NoError(err)
+	must.Len(previews, 1)
+	must.Len(previews[0].Mods, 1)
+	must.Equal("Fruit Tree Bug Fix", previews[0].Mods[0].OfficialName)
+	must.Equal("Fruit Tree Bug Fix", previews[0].Mods[0].FolderLabel)
+	must.Equal("moonslime.FruitTreeBugFix", previews[0].Mods[0].UniqueID)
+
+	installer := NewInstaller(root)
+	results, err := installer.InstallArchive(archivePath)
+	must.NoError(err)
+	must.Len(results, 1)
+	must.Empty(results[0].Error)
+	must.Equal("Fruit Tree Bug Fix", results[0].FolderPath)
+
+	_, err = os.Stat(filepath.Join(root, "Fruit Tree Bug Fix", "manifest.json"))
+	must.NoError(err)
+}

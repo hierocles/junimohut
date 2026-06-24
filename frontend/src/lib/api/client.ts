@@ -31,6 +31,10 @@ export type UnmanagedMod = NonNullable<
   Awaited<ReturnType<typeof import("./index").ListUnmanagedMods>>
 >[number];
 
+export type DuplicateModGroup = NonNullable<
+  Awaited<ReturnType<typeof import("./index").ListDuplicateMods>>
+>[number];
+
 /** Grid + shell data — everything needed to show the library. */
 export async function refreshCore(state: {
   search: string;
@@ -80,19 +84,23 @@ export async function refreshFooterStats() {
       readyCount: data.readyCount,
       dependencyIssueCount: data.dependencyIssueCount,
       unmanagedMods: data.unmanagedMods,
+      duplicateMods: data.duplicateMods ?? [],
     };
   }
 
-  const [readyCount, dependencyIssueCount, unmanagedMods] = await Promise.all([
-    API.ModsReadyToUpdate(),
-    API.ModsWithDependencyIssues(),
-    API.ListUnmanagedMods(),
-  ]);
+  const [readyCount, dependencyIssueCount, unmanagedMods, duplicateMods] =
+    await Promise.all([
+      API.ModsReadyToUpdate(),
+      API.ModsWithDependencyIssues(),
+      API.ListUnmanagedMods(),
+      API.ListDuplicateMods(),
+    ]);
 
   return {
     readyCount: readyCount ?? 0,
     dependencyIssueCount: dependencyIssueCount ?? 0,
     unmanagedMods: unmanagedMods ?? [],
+    duplicateMods: duplicateMods ?? [],
   };
 }
 
