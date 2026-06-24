@@ -18,7 +18,7 @@ export type InstallOptions = {
   mode: "install" | "replace";
   deleteOld?: boolean;
   useFolderDisplayNames?: boolean;
-  overwriteTargets?: Record<string, string>;
+  overwriteTargets?: Record<string, string[]>;
 };
 
 import type { InstallDependencyPreview } from "$lib/mods/dependencies";
@@ -58,7 +58,9 @@ export async function refreshCore(state: {
     ]);
 
   if (profiles === null || categories === null) {
-    throw new Error("App failed to initialize — profiles or categories unavailable");
+    throw new Error(
+      "App failed to initialize — profiles or categories unavailable",
+    );
   }
   return {
     mods: dedupeMods(mods ?? []),

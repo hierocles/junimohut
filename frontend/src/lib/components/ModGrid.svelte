@@ -5,9 +5,13 @@
   import type { Category, Mod } from "$lib/api/client";
   import { modStatusInfo, modStatusSortKey } from "$lib/mods/modStatus";
   import ModGridHeaderMenu from "$lib/components/ModGridHeaderMenu.svelte";
+  import {
+    MOD_GRID_DROP_ID,
+    pathsFromDataTransfer,
+    useNativeArchiveFileDrop,
+  } from "$lib/wails/archiveFileDrop";
   import TagPicker from "$lib/components/TagPicker.svelte";
   import {
-    normalizeArchivePaths,
     emptyLibraryState,
     workspaceOnboardingText,
     gridUpdatesFilterEmptyTitle,
@@ -418,22 +422,15 @@
     }
   }
 
-  function pathsFromDataTransfer(dataTransfer: DataTransfer | null): string[] {
-    if (!dataTransfer?.files?.length) return [];
-    return normalizeArchivePaths(
-      [...dataTransfer.files]
-        .map((f) => (f as File & { path?: string }).path ?? f.name)
-        .filter((p) => p.length > 0),
-    );
-  }
-
   function onInstallDragEnter(e: DragEvent) {
+    if (useNativeArchiveFileDrop) return;
     if (!e.dataTransfer?.types.includes("Files")) return;
     e.preventDefault();
     dropDragOver = true;
   }
 
   function onInstallDragOver(e: DragEvent) {
+    if (useNativeArchiveFileDrop) return;
     if (!e.dataTransfer?.types.includes("Files")) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
@@ -441,6 +438,7 @@
   }
 
   function onInstallDragLeave(e: DragEvent) {
+    if (useNativeArchiveFileDrop) return;
     const related = e.relatedTarget as Node | null;
     const current = e.currentTarget as HTMLElement;
     if (related && current.contains(related)) return;
@@ -448,6 +446,7 @@
   }
 
   function onInstallDrop(e: DragEvent) {
+    if (useNativeArchiveFileDrop) return;
     e.preventDefault();
     dropDragOver = false;
     const paths = pathsFromDataTransfer(e.dataTransfer);
@@ -937,8 +936,10 @@
 <svelte:window onmousemove={onColumnResizeMove} onmouseup={endColumnResize} />
 
 <div
+  id={MOD_GRID_DROP_ID}
+  data-file-drop-target
   class="mod-grid flex min-h-0 min-w-0 flex-1 flex-col"
-  class:mod-grid--drop-target={dropDragOver}
+  class:mod-grid--drop-target={!useNativeArchiveFileDrop && dropDragOver}
   role="region"
   aria-label="Mod list. Drop mod archives here to install."
   ondragenter={onInstallDragEnter}
@@ -1631,6 +1632,7 @@
     position: relative;
   }
 
+  .mod-grid[data-file-drop-target]:global(.file-drop-target-active)::after,
   .mod-grid--drop-target::after {
     content: "";
     position: absolute;

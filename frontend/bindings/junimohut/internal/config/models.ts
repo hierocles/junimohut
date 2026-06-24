@@ -25,6 +25,7 @@ export interface Settings {
     "showThumbnails": boolean;
     "autoSaveProfileChanges": boolean;
     "alwaysAskDeleteOnUpdate": boolean;
+    "showInstallSummary": boolean;
     "hideDisabledFilter": string;
     "visibleColumns": string[] | null;
     "windowWidth": number;

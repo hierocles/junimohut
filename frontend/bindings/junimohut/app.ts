@@ -156,7 +156,7 @@ export function HandleNXMURL(url: string): $CancellablePromise<string> {
     return $Call.ByID(1544860105, url);
 }
 
-export function InstallMods(archivePaths: string[] | null, useFolderDisplayNames: boolean, overwriteTargets: { [_ in string]?: string } | null): $CancellablePromise<mods$0.InstallResult[] | null> {
+export function InstallMods(archivePaths: string[] | null, useFolderDisplayNames: boolean, overwriteTargets: { [_ in string]?: string[] | null } | null): $CancellablePromise<mods$0.InstallResult[] | null> {
     return $Call.ByID(2855435565, archivePaths, useFolderDisplayNames, overwriteTargets);
 }
 

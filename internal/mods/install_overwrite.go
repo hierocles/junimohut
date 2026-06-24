@@ -60,6 +60,87 @@ func PreviewInstallOverwrites(archivePaths []string, modsRoot string, library []
 	return previews, nil
 }
 
+// normalizeArchivePathKey canonicalizes archive paths for map lookups across OSes.
+func normalizeArchivePathKey(path string) string {
+	return filepath.ToSlash(filepath.Clean(strings.TrimSpace(path)))
+}
+
+// LookupOverwriteTargets resolves merge targets from the install dialog map.
+func LookupOverwriteTargets(overwriteTargets map[string][]string, archivePath string) []string {
+	if overwriteTargets == nil {
+		return nil
+	}
+	if targets := overwriteTargets[archivePath]; len(targets) > 0 {
+		return targets
+	}
+	want := normalizeArchivePathKey(archivePath)
+	for key, targets := range overwriteTargets {
+		if len(targets) == 0 {
+			continue
+		}
+		if normalizeArchivePathKey(key) == want {
+			return targets
+		}
+	}
+	return nil
+}
+
+// DefaultMergeTargetsFromPreview picks merge folders when the UI pre-selects candidates.
+func DefaultMergeTargetsFromPreview(preview InstallOverwritePreview) []string {
+	if preview.State != overwritePreviewStateConfirm {
+		return nil
+	}
+	candidates := preview.Candidates
+	if len(candidates) == 0 {
+		return nil
+	}
+
+	uniqueIDs := map[string]struct{}{}
+	for _, candidate := range candidates {
+		if candidate.UniqueID != "" {
+			uniqueIDs[candidate.UniqueID] = struct{}{}
+		}
+	}
+	if len(uniqueIDs) > 1 {
+		targets := make([]string, 0, len(candidates))
+		for _, candidate := range candidates {
+			if folder := strings.TrimSpace(candidate.FolderPath); folder != "" {
+				targets = append(targets, folder)
+			}
+		}
+		return targets
+	}
+
+	if target := strings.TrimSpace(preview.SuggestedTarget); target != "" {
+		return []string{target}
+	}
+	if folder := strings.TrimSpace(candidates[0].FolderPath); folder != "" {
+		return []string{folder}
+	}
+	return nil
+}
+
+// ResolveInstallMergeTargets returns merge folders for a patch archive, using explicit
+// UI selections when present and falling back to overwrite preview defaults.
+func ResolveInstallMergeTargets(
+	archivePath string,
+	overwriteTargets map[string][]string,
+	modsRoot string,
+	library []Mod,
+) ([]string, error) {
+	if targets := LookupOverwriteTargets(overwriteTargets, archivePath); len(targets) > 0 {
+		return targets, nil
+	}
+	previews, err := PreviewInstallOverwrites([]string{archivePath}, modsRoot, library)
+	if err != nil {
+		return nil, err
+	}
+	if len(previews) == 0 {
+		return nil, nil
+	}
+	return DefaultMergeTargetsFromPreview(previews[0]), nil
+}
+
 func previewInstallOverwriteForArchive(archivePath, modsRoot string, library []Mod) (InstallOverwritePreview, bool, error) {
 	tmpDir, err := os.MkdirTemp("", "sdvm-overwrite-preview-*")
 	if err != nil {
@@ -223,7 +304,8 @@ func rankOverwriteCandidates(modsRoot string, library []Mod, relPaths []string) 
 			if matched == 0 {
 				continue
 			}
-			score := float64(matched) / float64(total)
+			denom := relevantArchiveFileCount(container, relPaths)
+			score := float64(matched) / float64(denom)
 			if score < overwriteMatchThreshold {
 				continue
 			}
@@ -236,7 +318,7 @@ func rankOverwriteCandidates(modsRoot string, library []Mod, relPaths []string) 
 				ModName:      mod.Manifest.Name,
 				UniqueID:     mod.Manifest.UniqueID,
 				MatchedFiles: matched,
-				TotalFiles:   total,
+				TotalFiles:   denom,
 				SamplePaths:  samples,
 			}
 		}
@@ -255,6 +337,101 @@ func rankOverwriteCandidates(modsRoot string, library []Mod, relPaths []string) 
 		return candidates[i].ModName < candidates[j].ModName
 	})
 	return candidates
+}
+
+// relevantArchiveFileCount is the number of archive paths that plausibly belong to
+// container. Assorted-asset packs use one top-level folder per mod; scoring against
+// the full archive size would hide every partial match.
+func relevantArchiveFileCount(container string, relPaths []string) int {
+	container = filepath.ToSlash(strings.TrimSpace(container))
+	if container == "" {
+		return len(relPaths)
+	}
+	count := 0
+	firstSeg := container
+	if idx := strings.Index(container, "/"); idx >= 0 {
+		firstSeg = container[:idx]
+	}
+	base := filepath.Base(container)
+	for _, rel := range relPaths {
+		rel = filepath.ToSlash(rel)
+		if rel == container || strings.HasPrefix(rel, container+"/") {
+			count++
+			continue
+		}
+		parts := strings.Split(rel, "/")
+		if len(parts) == 0 {
+			continue
+		}
+		if strings.EqualFold(parts[0], firstSeg) || strings.EqualFold(parts[0], base) {
+			count++
+		}
+	}
+	if count == 0 {
+		return len(relPaths)
+	}
+	return count
+}
+
+func countTopLevelPrefixes(relPaths []string) int {
+	seen := map[string]struct{}{}
+	for _, rel := range relPaths {
+		parts := strings.Split(filepath.ToSlash(rel), "/")
+		if len(parts) == 0 || parts[0] == "" {
+			continue
+		}
+		seen[strings.ToLower(parts[0])] = struct{}{}
+	}
+	return len(seen)
+}
+
+func shouldUseFilteredOverwriteMerge(relPaths []string, dest string) bool {
+	destBase := filepath.Base(dest)
+	if archiveHasUniformPrefix(relPaths, destBase) {
+		return false
+	}
+	return countTopLevelPrefixes(relPaths) > 1
+}
+
+func overwriteMergeDestPath(modAbs, rel string) (string, bool) {
+	for _, target := range overwriteTargetPaths(modAbs, rel) {
+		if fi, err := os.Stat(target); err == nil && !fi.IsDir() {
+			return target, true
+		}
+	}
+	targets := overwriteTargetPaths(modAbs, rel)
+	if len(targets) >= 2 {
+		return targets[1], true
+	}
+	if len(targets) == 1 {
+		return targets[0], true
+	}
+	return "", false
+}
+
+func copyMatchedOverwriteFiles(extractRoot, dest string, relPaths []string) error {
+	modAbs := filepath.Clean(dest)
+	for _, rel := range relPaths {
+		destPath, ok := overwriteMergeDestPath(modAbs, rel)
+		if !ok {
+			continue
+		}
+		srcPath := filepath.Join(extractRoot, filepath.FromSlash(rel))
+		data, err := os.ReadFile(srcPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return err
+		}
+		if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(destPath, data, 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func dedupeOverwriteCandidates(candidates []InstallOverwriteCandidate) []InstallOverwriteCandidate {
@@ -615,13 +792,19 @@ func (i *Installer) MergeArchiveIntoMod(archivePath, targetFolderPath string) (I
 	if err != nil {
 		return InstallResult{}, err
 	}
-	srcDir := resolveOverwriteCopySource(tmpDir, dest, relPaths)
-	if inner := hostedPresetCopySource(tmpDir, relPaths); inner != "" {
-		srcDir = inner
-	}
+	if shouldUseFilteredOverwriteMerge(relPaths, dest) {
+		if err := copyMatchedOverwriteFiles(tmpDir, dest, relPaths); err != nil {
+			return InstallResult{}, err
+		}
+	} else {
+		srcDir := resolveOverwriteCopySource(tmpDir, dest, relPaths)
+		if inner := hostedPresetCopySource(tmpDir, relPaths); inner != "" {
+			srcDir = inner
+		}
 
-	if err := copyDir(srcDir, dest); err != nil {
-		return InstallResult{}, err
+		if err := copyDir(srcDir, dest); err != nil {
+			return InstallResult{}, err
+		}
 	}
 
 	results, err := installResultsForDest(i, targetFolderPath)

@@ -1,6 +1,10 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
   import { Events } from "@wailsio/runtime";
+  import {
+    INSTALL_MODAL_DROP_ID,
+    MOD_GRID_DROP_ID,
+  } from "$lib/wails/archiveFileDrop";
   import * as API from "$lib/api";
   import {
     refreshCore,
@@ -622,6 +626,18 @@
       if (!path) return;
       pendingNexusDownloadPath = path;
     });
+    Events.On("files-dropped", (ev) => {
+      const payload = ev.data;
+      if (!payload?.files?.length) return;
+      const targetId = payload.targetId?.trim() ?? "";
+      if (
+        targetId !== INSTALL_MODAL_DROP_ID &&
+        targetId !== MOD_GRID_DROP_ID
+      ) {
+        return;
+      }
+      queueInstallArchives(payload.files);
+    });
     return () => {
       clearStatusDismissTimer();
     };
@@ -1022,6 +1038,16 @@
     installModalOpen = true;
   }
 
+  function queueInstallArchives(paths: string[]) {
+    const incoming = normalizeArchivePaths(paths);
+    if (incoming.length === 0) return;
+    if (installModalOpen) {
+      installQueue = normalizeArchivePaths([...installQueue, ...incoming]);
+      return;
+    }
+    openInstallModal(incoming);
+  }
+
   function closeInstallModal() {
     installModalOpen = false;
     installQueue = [];
@@ -1195,7 +1221,10 @@
           setStatus(modUpdateIgnoredMessage, "success");
           break;
         case "resumeUpdate":
-          await API.SetModUpdateIgnored(bundleUpdateTarget(mods, mod).id, false);
+          await API.SetModUpdateIgnored(
+            bundleUpdateTarget(mods, mod).id,
+            false,
+          );
           lastLoadKey = "";
           await load();
           setStatus(modUpdateResumedMessage, "success");
@@ -2139,6 +2168,7 @@
   updateTarget={installUpdateTarget}
   manualQueue={!installFromNexus}
   alwaysAskDeleteOnUpdate={settings?.alwaysAskDeleteOnUpdate ?? false}
+  showInstallSummary={settings?.showInstallSummary ?? true}
   {categories}
   {modsRoot}
   suggestedTagIds={installSuggestedTagIds}

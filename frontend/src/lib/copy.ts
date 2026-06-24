@@ -594,6 +594,10 @@ export function installOverwriteTargetHint(): string {
   return "Choose which installed mod folder should receive these files.";
 }
 
+export function installOverwriteMultiTargetHint(): string {
+  return "Select each mod folder that should receive matching files from this archive.";
+}
+
 export function installOverwriteMatchSummary(
   matched: number,
   total: number,
@@ -710,6 +714,14 @@ export const installDisplayNameHint =
 export const installDisplayNameOfficial = "Official manifest names";
 export const installDisplayNameFolder = "Folder names (Junimo Hut split)";
 export const installDisplayNamePreviewLabel = "Will install as";
+
+export const installRowBadgePatch = "File patch";
+export const installRowBadgeBlocked = "Blocked";
+export const installAddMoreArchives = "Add more archives…";
+export const installNamingDisclosure = (count: number) =>
+  count === 1 ? "Naming (1 mod)" : `Naming (${count} mods)`;
+export const settingsShowInstallSummary =
+  "Show install results in the install dialog";
 export const themeStardewDarkLabel = "Stardew Dark";
 export const themeStardewLightLabel = "Stardew Light";
 export const themeCerberusLabel = "Cerberus";

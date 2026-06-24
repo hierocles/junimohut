@@ -5,11 +5,16 @@
 // @ts-ignore: Unused imports
 import type { Events } from "@wailsio/runtime";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import type * as main$0 from "../../../../../junimohut/models.js";
+
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
             "config-editor-open-mod": string;
             "config-editor-reload": boolean;
+            "files-dropped": main$0.FilesDroppedPayload;
             "mods-changed": boolean;
             "nexus-download-ready": string;
             "nxm-url": string;

@@ -20,6 +20,7 @@
     themeDropdownOptions,
     settingsNexusHint,
     dialogCancelLabel,
+    settingsShowInstallSummary,
   } from "$lib/copy";
   import DropdownList from "$lib/components/DropdownList.svelte";
 
@@ -61,6 +62,7 @@
       profileSpecificConfigs: source.profileSpecificConfigs ?? false,
       autoEnableOnInstall: source.autoEnableOnInstall ?? true,
       alwaysAskDeleteOnUpdate: source.alwaysAskDeleteOnUpdate ?? false,
+      showInstallSummary: source.showInstallSummary ?? true,
     };
   }
 
@@ -381,6 +383,16 @@
           <span class="type-ui"
             >Ask before deleting old files when updating a mod</span
           >
+        </label>
+
+        <label class="field-check-row">
+          <input
+            type="checkbox"
+            class="checkbox"
+            bind:checked={draft.showInstallSummary}
+            onchange={onAutoFieldChange}
+          />
+          <span class="type-ui">{settingsShowInstallSummary}</span>
         </label>
 
         <div class="label">

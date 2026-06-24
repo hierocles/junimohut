@@ -1,6 +1,7 @@
 package mods
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -70,4 +71,15 @@ func TestIsFashionSenseRelated(t *testing.T) {
 			must.Equal(tc.want, IsFashionSenseRelated(tc.m))
 		})
 	}
+}
+
+func TestArchivesContainFashionSenseSkipsPatchArchive(t *testing.T) {
+	must := require.New(t)
+
+	archivePath := filepath.Join(t.TempDir(), "fs-ui.zip")
+	writeFashionSenseUIPatchZip(t, archivePath)
+
+	found, err := ArchivesContainFashionSense([]string{archivePath})
+	must.NoError(err)
+	must.False(found)
 }

@@ -532,33 +532,43 @@ func (a *App) PreviewInstallNames(archivePaths []string) ([]mods.InstallNamePrev
 	return mods.PreviewInstallNames(archivePaths)
 }
 
-func (a *App) InstallMods(archivePaths []string, useFolderDisplayNames bool, overwriteTargets map[string]string) ([]mods.InstallResult, error) {
+func (a *App) InstallMods(archivePaths []string, useFolderDisplayNames bool, overwriteTargets map[string][]string) ([]mods.InstallResult, error) {
 	if err := a.ensureInit(); err != nil {
 		return nil, err
 	}
 	settings := a.store.Get()
 	installer := mods.NewInstaller(settings.ModsRoot)
+	a.mu.RLock()
+	library := append([]mods.Mod{}, a.modsCache...)
+	a.mu.RUnlock()
 	var all []mods.InstallResult
 	for _, p := range archivePaths {
-		targetFolder := ""
-		if overwriteTargets != nil {
-			targetFolder = overwriteTargets[p]
+		targets, err := mods.ResolveInstallMergeTargets(p, overwriteTargets, settings.ModsRoot, library)
+		if err != nil {
+			all = append(all, mods.InstallResult{Error: err.Error()})
+			continue
 		}
-		if targetFolder != "" {
-			result, err := installer.MergeArchiveIntoMod(p, targetFolder)
-			if err != nil {
-				all = append(all, mods.InstallResult{Error: err.Error()})
-				continue
-			}
-			all = append(all, result)
-			if result.ModID != "" {
-				_ = a.overwriteMerges.RecordMerge(result.ModID)
-				fallback := mods.ManifestModTime(filepath.Join(settings.ModsRoot, filepath.FromSlash(result.FolderPath)))
-				_ = a.modTimes.RecordUpdate(result.ModID, fallback)
-				a.downloadIndex.RecordInstall(p, a.modUniqueIDFor(result.ModID), 0)
-			}
-			if settings.AutoEnableOnInstall && result.ModID != "" {
-				_ = a.profiles.SetModEnabled(result.ModID, true)
+		if len(targets) > 0 {
+			for _, targetFolder := range targets {
+				targetFolder = strings.TrimSpace(targetFolder)
+				if targetFolder == "" {
+					continue
+				}
+				result, err := installer.MergeArchiveIntoMod(p, targetFolder)
+				if err != nil {
+					all = append(all, mods.InstallResult{Error: err.Error()})
+					continue
+				}
+				all = append(all, result)
+				if result.ModID != "" {
+					_ = a.overwriteMerges.RecordMerge(result.ModID)
+					fallback := mods.ManifestModTime(filepath.Join(settings.ModsRoot, filepath.FromSlash(result.FolderPath)))
+					_ = a.modTimes.RecordUpdate(result.ModID, fallback)
+					a.downloadIndex.RecordInstall(p, a.modUniqueIDFor(result.ModID), 0)
+				}
+				if settings.AutoEnableOnInstall && result.ModID != "" {
+					_ = a.profiles.SetModEnabled(result.ModID, true)
+				}
 			}
 			continue
 		}

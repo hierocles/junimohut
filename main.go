@@ -15,12 +15,19 @@ import (
 //go:embed all:frontend/dist
 var assets embed.FS
 
+// FilesDroppedPayload is emitted when OS files land on a data-file-drop-target zone.
+type FilesDroppedPayload struct {
+	Files    []string `json:"files"`
+	TargetID string   `json:"targetId"`
+}
+
 func init() {
 	application.RegisterEvent[bool]("mods-changed")
 	application.RegisterEvent[string]("nxm-url")
 	application.RegisterEvent[string]("nexus-download-ready")
 	application.RegisterEvent[string]("config-editor-open-mod")
 	application.RegisterEvent[bool]("config-editor-reload")
+	application.RegisterEvent[FilesDroppedPayload]("files-dropped")
 }
 
 func main() {
@@ -64,16 +71,29 @@ func main() {
 	appService.SetApplication(app)
 
 	mainWindow = app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:  "Junimo Hut — Mod manager for Stardew Valley",
-		Width:  1430,
-		Height: 900,
-		Frameless: true,
+		Title:          "Junimo Hut — Mod manager for Stardew Valley",
+		Width:          1430,
+		Height:         900,
+		EnableFileDrop: true,
+		Frameless:      true,
 		Mac: application.MacWindow{
 			InvisibleTitleBarHeight: 72,
 			Backdrop:                application.MacBackdropTranslucent,
 		},
 		BackgroundColour: application.NewRGB(22, 23, 28),
 		URL:              "/",
+	})
+
+	mainWindow.OnWindowEvent(events.Common.WindowFilesDropped, func(event *application.WindowEvent) {
+		files := event.Context().DroppedFiles()
+		if len(files) == 0 {
+			return
+		}
+		details := event.Context().DropTargetDetails()
+		app.Event.Emit("files-dropped", FilesDroppedPayload{
+			Files:    files,
+			TargetID: details.ElementID,
+		})
 	})
 
 	app.Event.OnApplicationEvent(events.Common.ApplicationLaunchedWithUrl, func(e *application.ApplicationEvent) {

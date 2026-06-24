@@ -229,7 +229,7 @@ func PreviewInstallDependencies(archivePaths []string, library []Mod) ([]Install
 	for _, archivePath := range archivePaths {
 		manifests, err := extractManifestsFromArchive(archivePath)
 		if err != nil {
-			if err == errOverwritePatchArchive {
+			if errors.Is(err, errOverwritePatchArchive) {
 				continue
 			}
 			return nil, fmt.Errorf("%s: %w", filepath.Base(archivePath), err)

@@ -1,5 +1,7 @@
 package mods
 
+import "errors"
+
 // FashionSenseFrameworkUID is the UniqueID of the Fashion Sense framework mod.
 const FashionSenseFrameworkUID = "PeacefulEnd.FashionSense"
 
@@ -23,6 +25,9 @@ func ArchivesContainFashionSense(archivePaths []string) (bool, error) {
 	for _, archivePath := range archivePaths {
 		manifests, err := extractManifestsFromArchive(archivePath)
 		if err != nil {
+			if errors.Is(err, errOverwritePatchArchive) {
+				continue
+			}
 			return false, err
 		}
 		for _, manifest := range manifests {

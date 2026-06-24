@@ -516,6 +516,7 @@ export const MOCK_SETTINGS: Settings = {
   showThumbnails: false,
   autoSaveProfileChanges: true,
   alwaysAskDeleteOnUpdate: false,
+  showInstallSummary: true,
   hideDisabledFilter: "none",
   visibleColumns: [
     "enabled",
