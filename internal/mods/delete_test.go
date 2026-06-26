@@ -197,3 +197,80 @@ func TestDeleteModSingle(t *testing.T) {
 	_, err := os.Stat(filepath.Join(modsRoot, "Single"))
 	must.True(os.IsNotExist(err))
 }
+
+func TestDeleteModsRemovesEmptyContainer(t *testing.T) {
+	t.Parallel()
+	must := require.New(t)
+
+	modsRoot, _, index := setupDeleteTest(t)
+	installer := mods.NewInstaller(modsRoot)
+
+	writeTestMod(t, modsRoot, "Example Pack/PartA", "Author.ModA")
+	writeTestMod(t, modsRoot, "Example Pack/PartB", "Author.ModB")
+
+	result := mods.DeleteMods(
+		installer,
+		[]string{"Example Pack/PartA", "Example Pack/PartB"},
+		false,
+		modResolver([]mods.Mod{
+			{ID: "PartA", FolderPath: "Example Pack/PartA", Manifest: mods.Manifest{UniqueID: "Author.ModA"}},
+			{ID: "PartB", FolderPath: "Example Pack/PartB", Manifest: mods.Manifest{UniqueID: "Author.ModB"}},
+		}),
+		index,
+		nexus.ModIDFromUpdateKeys,
+	)
+	must.Equal(2, result.DeletedCount)
+	must.Empty(result.Errors)
+	_, err := os.Stat(filepath.Join(modsRoot, "Example Pack"))
+	must.True(os.IsNotExist(err))
+}
+
+func TestDeleteModsPartialKeepsContainer(t *testing.T) {
+	t.Parallel()
+	must := require.New(t)
+
+	modsRoot, _, index := setupDeleteTest(t)
+	installer := mods.NewInstaller(modsRoot)
+
+	writeTestMod(t, modsRoot, "Example Pack/PartA", "Author.ModA")
+	writeTestMod(t, modsRoot, "Example Pack/PartB", "Author.ModB")
+
+	result := mods.DeleteMods(
+		installer,
+		[]string{"Example Pack/PartA"},
+		false,
+		modResolver([]mods.Mod{
+			{ID: "PartA", FolderPath: "Example Pack/PartA", Manifest: mods.Manifest{UniqueID: "Author.ModA"}},
+		}),
+		index,
+		nexus.ModIDFromUpdateKeys,
+	)
+	must.Equal(1, result.DeletedCount)
+	must.Empty(result.Errors)
+	_, err := os.Stat(filepath.Join(modsRoot, "Example Pack"))
+	must.NoError(err)
+	_, err = os.Stat(filepath.Join(modsRoot, "Example Pack/PartB", "manifest.json"))
+	must.NoError(err)
+}
+
+func TestDeleteModRemovesEmptyContainerForLastChild(t *testing.T) {
+	t.Parallel()
+	must := require.New(t)
+
+	modsRoot, _, index := setupDeleteTest(t)
+	installer := mods.NewInstaller(modsRoot)
+
+	writeTestMod(t, modsRoot, "Container/Mod", "Author.Mod")
+	must.NoError(mods.DeleteMod(
+		installer,
+		"Container/Mod",
+		false,
+		modResolver([]mods.Mod{
+			{ID: "Mod", FolderPath: "Container/Mod", Manifest: mods.Manifest{UniqueID: "Author.Mod"}},
+		}),
+		index,
+		nexus.ModIDFromUpdateKeys,
+	))
+	_, err := os.Stat(filepath.Join(modsRoot, "Container"))
+	must.True(os.IsNotExist(err))
+}

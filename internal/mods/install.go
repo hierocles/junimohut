@@ -244,7 +244,33 @@ func (i *Installer) UpdateMods(folderPaths []string, archivePath string, deleteO
 // DeleteMod removes a mod folder from the mods root.
 func (i *Installer) DeleteMod(folderPath string) error {
 	abs := filepath.Join(i.ModsRoot, filepath.FromSlash(folderPath))
-	return os.RemoveAll(abs)
+	if err := os.RemoveAll(abs); err != nil {
+		return err
+	}
+	i.pruneEmptyParentDirs(folderPath)
+	return nil
+}
+
+// pruneEmptyParentDirs removes ancestor directories that became empty after mod deletion.
+func (i *Installer) pruneEmptyParentDirs(folderPath string) {
+	if i.ModsRoot == "" {
+		return
+	}
+	parent := filepath.Dir(filepath.Join(i.ModsRoot, filepath.FromSlash(folderPath)))
+	for {
+		rel, err := filepath.Rel(i.ModsRoot, parent)
+		if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
+			return
+		}
+		entries, err := os.ReadDir(parent)
+		if err != nil || len(entries) > 0 {
+			return
+		}
+		if err := os.Remove(parent); err != nil {
+			return
+		}
+		parent = filepath.Dir(parent)
+	}
 }
 
 // UpdateMod replaces mod files from an archive, optionally deleting old files first.
