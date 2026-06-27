@@ -31,9 +31,12 @@ func (s *ConfigEditorService) ListModsWithJsonFiles() []mods.ModJsonSummary {
 	settings := s.core.Store.Get()
 	out := make([]mods.ModJsonSummary, 0)
 	for _, mod := range s.core.Catalog.mods {
-		s.appendModJsonSummary(&out, mod, settings.ModsRoot)
-		for _, child := range mod.BundleChildren {
-			s.appendModJsonSummary(&out, child, settings.ModsRoot)
+		if len(mod.BundleChildren) > 0 {
+			for _, child := range mod.BundleChildren {
+				s.appendModJsonSummary(&out, child, settings.ModsRoot)
+			}
+		} else {
+			s.appendModJsonSummary(&out, mod, settings.ModsRoot)
 		}
 	}
 	return out
@@ -189,10 +192,7 @@ func (s *ConfigEditorService) ReloadConfigEditor() {
 }
 
 func (s *ConfigEditorService) appendModJsonSummary(out *[]mods.ModJsonSummary, mod mods.Mod, modsRoot string) {
-	count := mod.JsonFileCount
-	if count == 0 {
-		count = mods.CountJsonFiles(modDirForJSON(mod, modsRoot))
-	}
+	count := mods.CountJsonFiles(modDirForJSON(mod, modsRoot))
 	if count == 0 {
 		return
 	}

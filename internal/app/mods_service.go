@@ -210,7 +210,7 @@ func (s *ModsService) DeleteMod(folderPath string, deleteArchive bool) error {
 	}
 	settings := s.core.Store.Get()
 	installer := mods.NewInstaller(settings.ModsRoot)
-	return mods.DeleteMod(
+	err := mods.DeleteMod(
 		installer,
 		folderPath,
 		deleteArchive,
@@ -218,6 +218,11 @@ func (s *ModsService) DeleteMod(folderPath string, deleteArchive bool) error {
 		s.core.DownloadIndex,
 		nexus.ModIDFromUpdateKeys,
 	)
+	if err == nil {
+		_ = s.core.Catalog.Refresh(s.core.Ctx())
+		s.core.Events.EmitModsChanged()
+	}
+	return err
 }
 
 func (s *ModsService) DeleteMods(folderPaths []string, deleteArchives bool) (mods.DeleteModsResult, error) {

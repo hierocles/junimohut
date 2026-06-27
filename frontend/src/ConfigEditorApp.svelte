@@ -585,6 +585,10 @@
     Events.On("config-editor-reload", () => {
       if (modId) void loadFile(modId, activeRelPath);
     });
+
+    Events.On("mods-changed", () => {
+      void loadModSummaries();
+    });
   });
 </script>
 
