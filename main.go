@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"junimohut/internal/app"
+
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 )
@@ -32,19 +34,19 @@ func init() {
 
 func main() {
 	startSMAPI := flag.Bool("start-smapi", false, "Launch SMAPI after startup")
-	_ = startSMAPI
 	flag.Parse()
 
-	appService := NewApp()
+	services := app.NewServices(app.CoreOptions{
+		StartSMAPI: *startSMAPI || app.ParseStartSMAPIFlag(),
+		CLIArgs:    os.Args[1:],
+	})
 
 	var mainWindow *application.WebviewWindow
 
-	app := application.New(application.Options{
+	wailsApp := application.New(application.Options{
 		Name:        "Junimo Hut",
 		Description: "Cross-platform mod manager for Stardew Valley",
-		Services: []application.Service{
-			application.NewService(appService),
-		},
+		Services:    services.Register(),
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
 		},
@@ -56,7 +58,7 @@ func main() {
 			OnSecondInstanceLaunch: func(data application.SecondInstanceData) {
 				for _, arg := range data.Args {
 					if strings.HasPrefix(arg, "nxm://") {
-						appService.EmitNXMURL(arg)
+						services.System.EmitNXMURL(arg)
 						if mainWindow != nil {
 							mainWindow.Restore()
 							mainWindow.Focus()
@@ -68,9 +70,9 @@ func main() {
 		},
 	})
 
-	appService.SetApplication(app)
+	services.Core.SetApplication(wailsApp)
 
-	mainWindow = app.Window.NewWithOptions(application.WebviewWindowOptions{
+	mainWindow = wailsApp.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:          "Junimo Hut — Mod manager for Stardew Valley",
 		Width:          1430,
 		Height:         900,
@@ -90,16 +92,16 @@ func main() {
 			return
 		}
 		details := event.Context().DropTargetDetails()
-		app.Event.Emit("files-dropped", FilesDroppedPayload{
+		wailsApp.Event.Emit("files-dropped", FilesDroppedPayload{
 			Files:    files,
 			TargetID: details.ElementID,
 		})
 	})
 
-	app.Event.OnApplicationEvent(events.Common.ApplicationLaunchedWithUrl, func(e *application.ApplicationEvent) {
+	wailsApp.Event.OnApplicationEvent(events.Common.ApplicationLaunchedWithUrl, func(e *application.ApplicationEvent) {
 		url := e.Context().URL()
 		if strings.HasPrefix(url, "nxm://") {
-			appService.EmitNXMURL(url)
+			services.System.EmitNXMURL(url)
 			if mainWindow != nil {
 				mainWindow.Restore()
 				mainWindow.Focus()
@@ -109,10 +111,10 @@ func main() {
 
 	go func() {
 		time.Sleep(400 * time.Millisecond)
-		appService.ProcessCommandLineArgs(os.Args[1:])
+		services.System.ProcessCommandLineArgs(os.Args[1:])
 	}()
 
-	if err := app.Run(); err != nil {
+	if err := wailsApp.Run(); err != nil {
 		log.Fatal(err)
 	}
 }
