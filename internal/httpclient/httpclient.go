@@ -29,8 +29,11 @@ func Download() *http.Client {
 
 func defaultTransport() *http.Transport {
 	return &http.Transport{
-		Proxy:       proxyForRequest,
-		DialContext: (&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+		Proxy:               proxyForRequest,
+		DialContext:         (&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+		MaxIdleConns:        20,
+		MaxIdleConnsPerHost: 4,
+		IdleConnTimeout:     90 * time.Second,
 	}
 }
 

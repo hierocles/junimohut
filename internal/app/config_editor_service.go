@@ -36,7 +36,6 @@ func (s *ConfigEditorService) ListModsWithJsonFiles() []mods.ModJsonSummary {
 			s.appendModJsonSummary(&out, child, settings.ModsRoot)
 		}
 	}
-	s.core.Catalog.mu.RUnlock()
 	return out
 }
 

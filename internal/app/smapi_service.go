@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"junimohut/internal/config"
@@ -13,7 +14,16 @@ import (
 	"junimohut/internal/smapi"
 )
 
-type SMAPIService struct { core *Core }
+const smapiUpdateCacheTTL = 5 * time.Minute
+
+type SMAPIService struct {
+	core *Core
+
+	updateCacheMu sync.Mutex
+	updateCache   *smapi.UpdateInfo
+	updateCacheAt time.Time
+}
+
 func NewSMAPIService(core *Core) *SMAPIService { return &SMAPIService{core: core} }
 
 func (s *SMAPIService) LaunchSMAPI() error {
@@ -21,14 +31,26 @@ func (s *SMAPIService) LaunchSMAPI() error {
 		return err
 	}
 	settings := s.core.Store.Get()
-	if err := s.core.Catalog.Refresh(s.core.Ctx()); err != nil {
+
+	// Catalog.Refresh (disk scan) and SaveConfigs (config file copies) are
+	// independent, so run them concurrently to cut pre-launch latency.
+	refreshErrCh := make(chan error, 1)
+	go func() {
+		refreshErrCh <- s.core.Catalog.Refresh(s.core.Ctx())
+	}()
+
+	var saveErr error
+	if settings.ProfileSpecificConfigs {
+		saveErr = s.core.ConfigMgr.SaveConfigs(settings.ModsRoot, modUniqueIDMapFromEnabled(s.core, s.core.Profiles.EnabledMods()))
+	}
+
+	if err := <-refreshErrCh; err != nil {
 		return err
 	}
-	if settings.ProfileSpecificConfigs {
-		if err := s.core.ConfigMgr.SaveConfigs(settings.ModsRoot, modUniqueIDMapFromEnabled(s.core, s.core.Profiles.EnabledMods())); err != nil {
-			return err
-		}
+	if saveErr != nil {
+		return saveErr
 	}
+
 	launcher := smapi.NewLauncher(settings.GamePath, settings.SMAPIPath)
 	return launcher.Launch()
 }
@@ -45,15 +67,29 @@ func (s *SMAPIService) CheckSMAPIUpdate() (smapi.UpdateInfo, error) {
 	if err := s.core.RequireStarted(); err != nil {
 		return smapi.UpdateInfo{}, err
 	}
-	return smapi.CheckSMAPIUpdate(s.core.SMAPIVersion())
+	info, err := smapi.CheckSMAPIUpdate(s.core.SMAPIVersion())
+	if err == nil {
+		s.updateCacheMu.Lock()
+		s.updateCache = &info
+		s.updateCacheAt = time.Now()
+		s.updateCacheMu.Unlock()
+	}
+	return info, err
 }
 
 func (s *SMAPIService) InstallSMAPI() error {
 	if err := s.core.RequireStarted(); err != nil {
 		return err
 	}
-	info, _ := smapi.CheckSMAPIUpdate(s.core.SMAPIVersion())
-	return smapi.InstallSMAPI(info.DownloadURL, s.core.Store.Get().GamePath)
+	// Reuse the download URL from a recent CheckSMAPIUpdate call to avoid a
+	// second GitHub API round-trip. smapi.InstallSMAPI fetches it if empty.
+	var downloadURL string
+	s.updateCacheMu.Lock()
+	if s.updateCache != nil && time.Since(s.updateCacheAt) < smapiUpdateCacheTTL {
+		downloadURL = s.updateCache.DownloadURL
+	}
+	s.updateCacheMu.Unlock()
+	return smapi.InstallSMAPI(downloadURL, s.core.Store.Get().GamePath)
 }
 
 func (s *SMAPIService) CheckModUpdates() ([]smapi.ModUpdateResult, error) {
